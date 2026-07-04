@@ -1,5 +1,20 @@
 # Testes — Auré Casa
 
+## Suíte pytest da API (backend/tests/)
+
+Testes de integração da API sem MongoDB real (banco mock via `mongomock-motor`,
+seed roda no lifespan a cada teste). Cobrem catálogo, cupons, CEP, pedidos,
+newsletter/contato e toda a área admin (login + rate limiting, cookie httpOnly,
+CRUD de produtos, whitelist do PATCH de pedidos, stats, limites de upload).
+
+```bash
+cd backend
+source .venv/bin/activate   # ou crie: python3 -m venv .venv && pip install -r requirements.txt
+pytest tests/
+```
+
+O `pytest.ini` já roda com 2 workers (`-n 2 --dist loadscope`) — não passe `-n` manualmente.
+
 ## Auditoria E2E (julho/2026)
 
 ### Backend — 38/38 aprovados (agente de testes, suite em `/app/backend_test.py`)

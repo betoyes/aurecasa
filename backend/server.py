@@ -12,6 +12,7 @@ import jwt
 import re
 import secrets
 import shutil
+import time
 from pathlib import Path
 from pydantic import BaseModel, Field, EmailStr
 from typing import List, Optional, Dict, Any
@@ -457,14 +458,45 @@ class AdminLogin(BaseModel):
     email: EmailStr
     password: str
 
+# Rate limit de login em memória (por processo). Com múltiplos workers cada um
+# tem seu próprio contador — suficiente para o painel single-admin; um store
+# compartilhado (Redis) só se a superfície de auth crescer.
+LOGIN_MAX_FAILURES = 5
+LOGIN_WINDOW_SECONDS = 15 * 60
+LOGIN_STORE_MAX_IPS = 10_000
+_login_failures: Dict[str, List[float]] = {}
+
+def _client_ip(request: Request) -> str:
+    return request.client.host if request.client else "unknown"
+
+def _register_login_failure(ip: str, failures: List[float], now: float):
+    # Teto do store: IPs rotativos não podem esgotar a memória do worker
+    if ip not in _login_failures and len(_login_failures) >= LOGIN_STORE_MAX_IPS:
+        expired = [k for k, v in _login_failures.items()
+                   if not any(now - t < LOGIN_WINDOW_SECONDS for t in v)]
+        for k in expired:
+            del _login_failures[k]
+        if len(_login_failures) >= LOGIN_STORE_MAX_IPS:
+            oldest = min(_login_failures, key=lambda k: max(_login_failures[k]))
+            del _login_failures[oldest]
+    _login_failures[ip] = failures
+
 @api_router.post("/admin/login")
-async def admin_login(payload: AdminLogin, response: Response):
+async def admin_login(payload: AdminLogin, request: Request, response: Response):
     if not ADMIN_PASSWORD:
         raise HTTPException(status_code=503, detail="Admin não configurado")
+    ip = _client_ip(request)
+    now = time.monotonic()
+    recent_failures = [t for t in _login_failures.get(ip, []) if now - t < LOGIN_WINDOW_SECONDS]
+    if len(recent_failures) >= LOGIN_MAX_FAILURES:
+        _login_failures[ip] = recent_failures
+        raise HTTPException(status_code=429, detail="Muitas tentativas. Tente novamente em alguns minutos.")
     email_ok = secrets.compare_digest(payload.email.encode(), ADMIN_EMAIL.encode())
     password_ok = secrets.compare_digest(payload.password.encode(), ADMIN_PASSWORD.encode())
     if not (email_ok and password_ok):
+        _register_login_failure(ip, [*recent_failures, now], now)
         raise HTTPException(status_code=401, detail="Credenciais inválidas")
+    _login_failures.pop(ip, None)
     token = jwt.encode(
         {"email": payload.email, "exp": datetime.now(timezone.utc) + timedelta(days=7)},
         JWT_SECRET, algorithm=JWT_ALG,

@@ -36,5 +36,6 @@
 
 - Backend FastAPI em `0.0.0.0:8001`; frontend (build estático ou dev server) em `3000`.
 - Em produção, coloque um reverse proxy (Nginx/Caddy) roteando `/api/*` → 8001 e o restante → frontend. Por isso todo endpoint mantém o prefixo `/api`.
+- **Rate limiting do login**: o limitador usa o IP do cliente e é em memória, por processo. Atrás de proxy reverso, rode o uvicorn com `--proxy-headers --forwarded-allow-ips <ip-do-proxy>` — sem isso todos os requests parecem vir do IP do proxy e 5 senhas erradas de qualquer pessoa bloqueiam o login do admin por 15 min. Com múltiplos workers o limite efetivo é `5 × workers`; use `--workers 1` ou migre para um store compartilhado (Redis) se a superfície de auth crescer.
 - O seed do banco roda automaticamente na primeira subida do backend.
 - Exemplo de execução em produção: `uvicorn server:app --host 0.0.0.0 --port 8001 --workers 2` atrás do proxy, e `yarn build` servido como estático.
