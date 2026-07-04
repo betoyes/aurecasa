@@ -4,7 +4,7 @@
 
 - URL: `/admin/login`
 - Credenciais definidas no `.env` do backend (`ADMIN_EMAIL`, `ADMIN_PASSWORD`).
-- Sessão: token JWT válido por 7 dias, salvo no navegador. "Sair" encerra a sessão. Token inválido/expirado redireciona automaticamente para o login.
+- Sessão: cookie httpOnly válido por 7 dias (inacessível a scripts — proteção contra XSS). "Sair" encerra a sessão no servidor. Sessão inválida/expirada redireciona automaticamente para o login.
 
 ## Abas
 

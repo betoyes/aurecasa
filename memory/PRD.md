@@ -20,6 +20,13 @@ Build a complete, polished Brazilian e-commerce website for a premium home objec
 - BRL formatting, PT-BR locale, SEO metadata
 
 ## Implementation Log
+### 2026-07 — Segurança: sessão admin em cookie httpOnly
+- /api/admin/login seta cookie httpOnly aure_admin_session (Secure, SameSite=lax, Path=/api, 7d); novo POST /api/admin/logout; require_admin aceita cookie OU Bearer (retrocompatível)
+- Frontend sem token em localStorage (withCredentials; chave legada limpa); skipAuthToast no verify inicial
+- Refactor: _build_products_query + _PRODUCT_SORTS extraídos de list_products (mesmo comportamento)
+- useMemo no cross-sell do ProductDetail
+- Regressão backend 46/46 (Bearer E cookie); smoke frontend: sem sessão→login, login cookie, reload mantém, logout, pós-logout→login — TODOS OK
+
 ### 2026-07 — Revisão de código aplicada
 - Corrigidos: catches vazios (Admin.jsx, AdminProducts.jsx, adminApi.js — agora logam erros não-401), load em useCallback + deps corretas, keys de listas com identidade estável (Cart, Checkout, Confirmation, Admin pedidos, AdminProducts imagens, ProductDetail reviews), estilos do chart hoisted para constantes de módulo, aspas tipográficas em StaticPages. Lint 100% limpo. Smoke test pós-fix: dashboard+chart, pedidos, produtos, reviews, carrinho — OK.
 - Falsos positivos do relatório NÃO aplicados: `is not None` (correto), random do gráfico demo (intencional/mock), deps de funções de módulo (referência estável), console.warn do craco (infra da plataforma).

@@ -43,8 +43,9 @@ React (3000) ──▶ /api/* ──▶ FastAPI (8001) ──▶ MongoDB
 | GET | `/api/admin/newsletter` · `/api/admin/contacts` | Listas read-only |
 
 ### Autenticação admin
-- JWT HS256 assinado com `JWT_SECRET`, payload `{email, exp}`.
-- `require_admin` (dependency) exige header `Authorization: Bearer <token>` e e-mail igual a `ADMIN_EMAIL`. Erros: 401 (ausente/expirado/inválido), 403 (e-mail diferente).
+- JWT HS256 assinado com `JWT_SECRET`, payload `{email, exp}` (7 dias).
+- Sessão do navegador via **cookie httpOnly** `aure_admin_session` (Secure, SameSite=lax, Path=/api) — inacessível a JavaScript, mitigando roubo por XSS. `POST /api/admin/logout` limpa o cookie.
+- `require_admin` (dependency) aceita o cookie OU header `Authorization: Bearer <token>` (para clientes de API/testes). Erros: 401 (ausente/expirado/inválido), 403 (e-mail diferente).
 
 ### Uploads
 - Salvos em `backend/static/uploads/` com nome `uuid4().hex + ext`.
@@ -66,7 +67,7 @@ React (3000) ──▶ /api/* ──▶ FastAPI (8001) ──▶ MongoDB
 
 ### Estado do cliente
 - **Carrinho e wishlist**: localStorage (hooks em `src/hooks`).
-- **Sessão admin**: token JWT em localStorage (`src/lib/adminApi.js`); `/admin` chama `/api/admin/verify` no mount e redireciona para `/admin/login` se inválido.
+- **Sessão admin**: cookie httpOnly `aure_admin_session` gerenciado pelo backend (nenhum token acessível a JS); `/admin` chama `/api/admin/verify` no mount e redireciona para `/admin/login` se inválido; logout via `POST /api/admin/logout`.
 - **Conta do cliente**: mock localStorage, sem backend.
 
 ### Design
