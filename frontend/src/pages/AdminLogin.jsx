@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { adminLogin, saveToken } from "@/lib/adminApi";
+import { adminLogin } from "@/lib/adminApi";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
@@ -12,8 +12,7 @@ export default function AdminLogin() {
         e.preventDefault();
         setLoading(true);
         try {
-            const r = await adminLogin(email, password);
-            saveToken(r.token);
+            await adminLogin(email, password);
             toast.success("Autenticado");
             navigate("/admin");
         } catch (err) {

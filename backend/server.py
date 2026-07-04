@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Query, Depends, UploadFile, File, Header
+from fastapi import FastAPI, APIRouter, HTTPException, Query, Depends, UploadFile, File, Header, Request, Response
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -322,27 +322,17 @@ async def seed_database():
         logger.info(f"Seeded {len(docs)} products")
 
 # ============ PRODUCT ROUTES ============
-@api_router.get("/products")
-async def list_products(
-    category: Optional[str] = None,
-    featured: Optional[bool] = None,
-    new: Optional[bool] = None,
-    bestseller: Optional[bool] = None,
-    min_price: Optional[float] = None,
-    max_price: Optional[float] = None,
-    color: Optional[str] = None,
-    q: Optional[str] = None,
-    sort: Optional[str] = None,
-):
+def _build_products_query(
+    category: Optional[str], featured: Optional[bool], new: Optional[bool],
+    bestseller: Optional[bool], min_price: Optional[float], max_price: Optional[float],
+    color: Optional[str], q: Optional[str],
+) -> Dict[str, Any]:
     query: Dict[str, Any] = {}
     if category:
         query["category_slug"] = category
-    if featured is not None:
-        query["featured"] = featured
-    if new is not None:
-        query["new"] = new
-    if bestseller is not None:
-        query["bestseller"] = bestseller
+    for field, value in (("featured", featured), ("new", new), ("bestseller", bestseller)):
+        if value is not None:
+            query[field] = value
     price_q: Dict[str, float] = {}
     if min_price is not None:
         price_q["$gte"] = min_price
@@ -358,15 +348,31 @@ async def list_products(
             {"description": {"$regex": q, "$options": "i"}},
             {"category": {"$regex": q, "$options": "i"}},
         ]
-    sort_arg: List[tuple] = [("name", 1)]
-    if sort == "price_asc":
-        sort_arg = [("price", 1)]
-    elif sort == "price_desc":
-        sort_arg = [("price", -1)]
-    elif sort == "new":
-        sort_arg = [("new", -1), ("name", 1)]
-    elif sort == "bestseller":
-        sort_arg = [("bestseller", -1), ("name", 1)]
+    return query
+
+
+_PRODUCT_SORTS: Dict[str, List[tuple]] = {
+    "price_asc": [("price", 1)],
+    "price_desc": [("price", -1)],
+    "new": [("new", -1), ("name", 1)],
+    "bestseller": [("bestseller", -1), ("name", 1)],
+}
+
+
+@api_router.get("/products")
+async def list_products(
+    category: Optional[str] = None,
+    featured: Optional[bool] = None,
+    new: Optional[bool] = None,
+    bestseller: Optional[bool] = None,
+    min_price: Optional[float] = None,
+    max_price: Optional[float] = None,
+    color: Optional[str] = None,
+    q: Optional[str] = None,
+    sort: Optional[str] = None,
+):
+    query = _build_products_query(category, featured, new, bestseller, min_price, max_price, color, q)
+    sort_arg = _PRODUCT_SORTS.get(sort or "", [("name", 1)])
     cursor = db.products.find(query, {"_id": 0}).sort(sort_arg)
     return await cursor.to_list(500)
 
@@ -397,10 +403,18 @@ async def create_order(order_in: OrderCreate):
 
 
 # ============ ADMIN AUTH + UPLOAD ============
-def require_admin(authorization: Optional[str] = Header(None)):
-    if not authorization or not authorization.startswith("Bearer "):
+SESSION_COOKIE = "aure_admin_session"
+SESSION_MAX_AGE = 7 * 24 * 3600  # 7 dias
+
+def require_admin(request: Request, authorization: Optional[str] = Header(None)):
+    # Aceita Bearer token (clientes de API/testes) ou cookie httpOnly (navegador)
+    token = None
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.split(" ", 1)[1]
+    elif request.cookies.get(SESSION_COOKIE):
+        token = request.cookies.get(SESSION_COOKIE)
+    if not token:
         raise HTTPException(status_code=401, detail="Não autenticado")
-    token = authorization.split(" ", 1)[1]
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALG])
         if payload.get("email") != ADMIN_EMAIL:
@@ -416,7 +430,7 @@ class AdminLogin(BaseModel):
     password: str
 
 @api_router.post("/admin/login")
-async def admin_login(payload: AdminLogin):
+async def admin_login(payload: AdminLogin, response: Response):
     if not ADMIN_PASSWORD:
         raise HTTPException(status_code=503, detail="Admin não configurado")
     if payload.email != ADMIN_EMAIL or payload.password != ADMIN_PASSWORD:
@@ -425,7 +439,17 @@ async def admin_login(payload: AdminLogin):
         {"email": payload.email, "exp": datetime.now(timezone.utc) + timedelta(days=7)},
         JWT_SECRET, algorithm=JWT_ALG,
     )
+    # Sessão via cookie httpOnly (inacessível a JS/XSS). Token também retornado p/ clientes de API.
+    response.set_cookie(
+        SESSION_COOKIE, token,
+        max_age=SESSION_MAX_AGE, httponly=True, secure=True, samesite="lax", path="/api",
+    )
     return {"token": token, "email": payload.email}
+
+@api_router.post("/admin/logout")
+async def admin_logout(response: Response):
+    response.delete_cookie(SESSION_COOKIE, path="/api")
+    return {"ok": True}
 
 @api_router.get("/admin/verify")
 async def admin_verify(admin=Depends(require_admin)):

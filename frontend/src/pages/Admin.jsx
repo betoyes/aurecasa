@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { adminUpdateOrder, adminVerify, clearToken, getToken, adminGetStats, adminGetProducts, adminGetOrders, adminGetNewsletter, adminGetContacts } from "@/lib/adminApi";
+import { adminUpdateOrder, adminVerify, adminLogout, adminGetStats, adminGetProducts, adminGetOrders, adminGetNewsletter, adminGetContacts } from "@/lib/adminApi";
 import { brl } from "@/lib/utils-brl";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
@@ -28,8 +28,8 @@ export default function Admin() {
     const navigate = useNavigate();
 
     useEffect(() => {
-        if (!getToken()) { navigate("/admin/login"); return; }
-        adminVerify().then(() => setAuthed(true)).catch(() => { clearToken(); navigate("/admin/login"); });
+        // Sessão via cookie httpOnly — o backend valida; sem cookie/expirado → login
+        adminVerify().then(() => setAuthed(true)).catch(() => navigate("/admin/login"));
     }, [navigate]);
 
     const load = useCallback(async () => {
@@ -54,7 +54,10 @@ export default function Admin() {
         catch { toast.error("Erro"); }
     };
 
-    const logout = () => { clearToken(); navigate("/admin/login"); };
+    const logout = async () => {
+        try { await adminLogout(); } catch (e) { console.error("Falha ao encerrar sessão:", e); }
+        navigate("/admin/login");
+    };
 
     if (!authed) return (
         <div className="pt-40 text-center fade-in" data-testid="admin-loading">

@@ -118,6 +118,9 @@ backend:
       - working: true
         agent: "testing"
         comment: "✅ PASS (5/5 tests): Login válido retorna token JWT correto. Login inválido retorna 401. Token válido verificado com sucesso. Sem token retorna 401. Token inválido/adulterado retorna 401. Autenticação admin funcionando perfeitamente."
+      - working: true
+        agent: "testing"
+        comment: "✅ REGRESSÃO PASS (11/11 tests): POST /api/admin/login retorna token+email E seta cookie httpOnly 'aure_admin_session' com todos atributos corretos (HttpOnly, Secure, SameSite=lax, Path=/api, Max-Age 7d). POST /api/admin/logout limpa cookie (Max-Age=0) e após logout cookie auth retorna 401. require_admin aceita AMBOS modos: (a) Bearer token e (b) cookie — testados em /api/admin/verify, /api/admin/products, /api/admin/stats. Sem auth retorna 401. Cookie inválido retorna 401. Migração para cookie httpOnly 100% funcional e retrocompatível."
   - task: "Admin products CRUD + upload (/api/admin/products, /api/admin/upload)"
     implemented: true
     working: true
@@ -146,6 +149,9 @@ backend:
       - working: true
         agent: "testing"
         comment: "✅ PASS (5/5 tests): GET /api/products retorna 8 produtos seed. Filtros funcionando: category (2 produtos em bancada-lavabo), sort=price_asc (ordenação correta), min_price/max_price (4 produtos entre R$100-150), color=Areia (5 produtos). GET /api/products/bandeja-ritual retorna produto correto. Slug inexistente retorna 404. GET /api/categories retorna 5 categorias. Catálogo público totalmente funcional."
+      - working: true
+        agent: "testing"
+        comment: "✅ REGRESSÃO PASS (12/12 tests): list_products refatorado (_build_products_query + _PRODUCT_SORTS) mantém comportamento idêntico. GET /api/products retorna 8 produtos. Filtros: category=bancada-lavabo (2), color=Areia (5), min_price/max_price (4 produtos entre R$100-150, todos no range), q=bandeja (1). Sorts: price_asc/price_desc (ordenação correta), new, bestseller. Sort inválido usa padrão (name asc) sem erro. GET /api/products/bandeja-ritual 200. GET /api/products/aure-product-demo 404. Refactor sem regressão."
   - task: "Pedidos (/api/orders POST/GET, PATCH status+tracking admin)"
     implemented: true
     working: true
@@ -160,6 +166,9 @@ backend:
       - working: true
         agent: "testing"
         comment: "✅ PASS (7/7 tests): POST /api/orders cria pedido com order_number e id. GET /api/orders/{id} e /api/orders/{order_number} retornam pedido correto. PATCH com admin token atualiza status e tracking_code (testado 'Enviado' + 'BR123456789'). PATCH sem token retorna 401. PATCH com campo não permitido (total) retorna 400. PATCH com id inexistente retorna 404. RESEND_API_KEY vazia não quebra fluxo (email_sent: false). Sistema de pedidos completo e funcional."
+      - working: true
+        agent: "testing"
+        comment: "✅ REGRESSÃO PASS (2/2 tests): POST /api/orders cria pedido. PATCH /api/orders/{id} com Bearer token atualiza status='Enviado' e tracking_code='BR123456789TEST'. Smoke test OK."
   - task: "Cupons e CEP (/api/coupons/validate, /api/shipping/cep)"
     implemented: true
     working: true
@@ -174,6 +183,9 @@ backend:
       - working: true
         agent: "testing"
         comment: "✅ PASS (6/6 tests): BEMVINDO10 valida corretamente (10% de R$200 = R$20 desconto). FRETEGRATIS válido com subtotal >= R$200 (free_shipping: true). FRETEGRATIS com subtotal < R$200 retorna 400 com mensagem de pedido mínimo. Cupom inexistente retorna 404. CEP 01310-100 retorna São Paulo/SP com frete R$24.90. CEP 99999-999 retorna dados mock com frete R$34.90. Sistema de cupons e CEP funcionando."
+      - working: true
+        agent: "testing"
+        comment: "✅ REGRESSÃO PASS (1/1 test): POST /api/coupons/validate com BEMVINDO10 e subtotal R$200 retorna desconto R$20 (10%). Smoke test OK."
   - task: "Newsletter e Contato (/api/newsletter, /api/contact)"
     implemented: true
     working: true
@@ -188,6 +200,9 @@ backend:
       - working: true
         agent: "testing"
         comment: "✅ PASS (7/7 tests): POST /api/newsletter com email novo retorna status ok. Email duplicado tratado graciosamente (sem erro, retorna 200). Email inválido retorna 422 com validação Pydantic. POST /api/contact com payload válido retorna status ok. Payload inválido (campos faltando) retorna 422. GET /api/admin/newsletter retorna lista de inscritos (2 encontrados). GET /api/admin/contacts retorna lista de mensagens (1 encontrada). RESEND_API_KEY vazia não quebra (email_sent: false). Newsletter e contato funcionando."
+      - working: true
+        agent: "testing"
+        comment: "✅ REGRESSÃO PASS (2/2 tests): POST /api/newsletter retorna 200. POST /api/contact retorna 200. Smoke tests OK."
 
 frontend:
   - task: "Fluxo admin UI (login, produtos, upload, reordenação, imagem principal, pedidos, logout, sessão inválida)"
@@ -222,7 +237,7 @@ frontend:
 metadata:
   created_by: "main_agent"
   version: "1.0"
-  test_sequence: 2
+  test_sequence: 3
   run_ui: true
 
 test_plan:
@@ -248,6 +263,10 @@ agent_communication:
     message: "Pós-auditoria: (1) produto de teste 'teste-e2e-bandeja-161619' removido via API — catálogo de volta a 8 produtos seed; (2) verificado que slug NÃO muda ao editar (falha do teste era do seletor, não do app); (3) reordenação ↑/↓ e imagem principal ★ verificadas diretamente via Playwright — PASS (ordem troca, prévia atualiza, cancelado sem alterar seed). RESULTADO FINAL: backend 38/38, frontend 16/16 fluxos aprovados. Docs criadas: README, docs/{ARQUITETURA,ADMIN,DEPLOY,TESTES}.md, .env.example (backend+frontend)."
   - agent: "main"
     message: "Revisão de código aplicada (fixes seguros, zero mudança visual): catches vazios agora logam erros não-401; load em useCallback+deps; keys estáveis em 6 listas; estilos do chart em constantes de módulo; aspas tipográficas. Lint 100% limpo. Smoke test Playwright pós-fix: dashboard+chart, pedidos(2), produtos(8), reviews(4), carrinho — TODOS OK. Falsos positivos do relatório documentados no PRD; httpOnly cookies/refactors grandes diferidos aguardando decisão do usuário."
+  - agent: "main"
+    message: "SEGURANÇA: migração da sessão admin para cookie httpOnly concluída. Backend: /api/admin/login agora seta cookie aure_admin_session (httponly, secure, samesite=lax, path=/api, 7d) e novo POST /api/admin/logout limpa o cookie; require_admin aceita Bearer token OU cookie (retrocompatível com backend_test.py). Refactor: _build_products_query + _PRODUCT_SORTS extraídos de list_products (mesmo comportamento). Frontend: adminApi com withCredentials, token removido do localStorage (chave legada limpa), AdminLogin não guarda token, Admin.jsx verifica sessão só via /admin/verify (flag skipAuthToast evita toast indevido na 1ª visita), logout chama endpoint. PRECISA RETESTAR: auth admin (Bearer E cookie), logout, catálogo com filtros/sort."
   - agent: "testing"
     message: "✅ BACKEND E2E COMPLETO: Executados 38 testes cobrindo todos os fluxos solicitados. 100% de sucesso (38/38 passed, 0 failed). Todos os endpoints funcionando corretamente: (1) Admin auth com JWT, (2) CRUD produtos + upload de imagens, (3) Catálogo público com filtros, (4) Sistema de pedidos com atualização de status/tracking, (5) Cupons e CEP, (6) Newsletter e contato. Validações de erro (401, 400, 404, 422) funcionando. RESEND_API_KEY vazia não quebra fluxos (graceful degradation). Backend está production-ready. Arquivo de teste: /app/backend_test.py. Frontend aguardando autorização do usuário para teste."
+  - agent: "testing"
+    message: "✅ REGRESSÃO BACKEND COMPLETA: Executados 46 testes (11 auth cookies + 12 list_products refactor + 5 smoke). 100% de sucesso (46/46 passed, 0 failed). MUDANÇAS TESTADAS: (1) POST /api/admin/login seta cookie httpOnly 'aure_admin_session' com todos atributos (HttpOnly, Secure, SameSite=lax, Path=/api, Max-Age 7d) ✅; (2) POST /api/admin/logout limpa cookie (Max-Age=0) e após logout cookie auth retorna 401 ✅; (3) require_admin aceita AMBOS Bearer token E cookie — testados em /admin/verify, /admin/products, /admin/stats ✅; (4) Sem auth retorna 401 ✅; (5) Cookie inválido retorna 401 ✅; (6) list_products refatorado (_build_products_query + _PRODUCT_SORTS) mantém comportamento idêntico — todos filtros (category, color, price, search), sorts (price_asc/desc, new, bestseller, invalid→default), slugs (200/404) funcionando ✅; (7) Smoke: orders POST/PATCH, coupons, newsletter, contact ✅. Dados de teste limpos (1 order, 1 newsletter, 1 contact deletados; 8 produtos seed preservados). Migração httpOnly 100% funcional e retrocompatível. Refactor sem regressão. Test suite atualizado: /app/backend_test.py."
 

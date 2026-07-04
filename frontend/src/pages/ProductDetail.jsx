@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { getProduct, getProducts } from "@/lib/api";
 import { brl, installments } from "@/lib/utils-brl";
@@ -31,6 +31,12 @@ export default function ProductDetail() {
         });
         getProducts({ category: "mesa-receber" }).then((all) => setRelated(all.slice(0, 4)));
     }, [slug]);
+
+    // Cross-sell memoizado (evita recomputar filter/slice a cada render)
+    const crossSell = useMemo(
+        () => (product ? related.filter((p) => p.id !== product.id).slice(0, 4) : []),
+        [related, product],
+    );
 
     if (!product) return <div className="pt-40 text-center" style={{ color: "var(--aure-muted)" }}>Carregando…</div>;
 
@@ -277,7 +283,7 @@ export default function ProductDetail() {
                     <section className="mt-24">
                         <h2 className="font-serif text-3xl mb-8" style={{ fontWeight: 400 }}>Combina com</h2>
                         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 md:gap-10">
-                            {related.filter((p) => p.id !== product.id).slice(0, 4).map((p) => (
+                            {crossSell.map((p) => (
                                 <ProductCard key={p.id} product={p} testIdPrefix="cross-sell" />
                             ))}
                         </div>
