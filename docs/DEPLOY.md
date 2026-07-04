@@ -5,11 +5,11 @@
 ### Backend (`backend/.env` — ver `.env.example`)
 | Variável | Obrigatória | Descrição |
 |---|---|---|
-| `MONGO_URL` | ✅ | String de conexão MongoDB |
-| `DB_NAME` | ✅ | Nome do banco |
-| `CORS_ORIGINS` | ✅ | Origens permitidas (`*` ou lista separada por vírgula) |
+| `MONGO_URL` | ✅ (default `mongodb://localhost:27017`) | String de conexão MongoDB |
+| `DB_NAME` | ✅ (default `aurecasa`) | Nome do banco |
+| `CORS_ORIGINS` | ✅ (default `http://localhost:3000`) | Origens permitidas, separadas por vírgula — **nunca `*`** (a sessão admin usa cookie com credenciais) |
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | ✅ | Credenciais do painel admin (login retorna 503 se senha vazia) |
-| `JWT_SECRET` | ✅ | Segredo do JWT — **troque em produção** |
+| `JWT_SECRET` | ✅ em produção | Segredo do JWT (`openssl rand -hex 32`). Sem ele, um segredo efêmero é gerado por processo e as sessões admin caem a cada restart |
 | `RESEND_API_KEY` | opcional | Sem ela, e-mails são pulados sem erro |
 | `EMAIL_FROM` | opcional | Remetente (domínio verificado no Resend) |
 | `EMAIL_OWNER` | opcional | Recebe cópia dos contatos |
@@ -21,7 +21,7 @@
 |---|---|
 | `REACT_APP_BACKEND_URL` | URL pública do backend (sem `/api` no final) |
 
-**Nunca hardcode URLs/portas no código.** No ambiente Emergent, `REACT_APP_BACKEND_URL` e `MONGO_URL` já vêm configurados — não os altere.
+**Nunca hardcode URLs/portas no código.** Configure tudo via `.env` (ver `.env.example` em cada pasta).
 
 ## Checklist de produção
 
@@ -32,10 +32,9 @@
 5. **Uploads**: `backend/static/uploads/` é disco local. Em plataformas com disco efêmero os arquivos somem em cada deploy — use volume persistente ou armazene imagens por URL externa (S3/Cloudinary) até haver storage dedicado.
 6. Pagamentos estão em **modo demo** — não anuncie checkout real antes de integrar Mercado Pago/Pagar.me.
 
-## Ambiente Emergent (atual)
+## Topologia
 
-- Supervisor gerencia os processos: backend em `0.0.0.0:8001`, frontend em `3000`.
-- `sudo supervisorctl restart backend|frontend|all`
-- Logs: `/var/log/supervisor/backend.err.log` e `frontend.err.log`.
-- Ingress roteia `/api/*` → 8001 e o restante → 3000. Por isso todo endpoint deve manter o prefixo `/api`.
-- Deploy nativo: use o recurso *Deploy* da plataforma Emergent (o seed do banco roda automaticamente na primeira subida).
+- Backend FastAPI em `0.0.0.0:8001`; frontend (build estático ou dev server) em `3000`.
+- Em produção, coloque um reverse proxy (Nginx/Caddy) roteando `/api/*` → 8001 e o restante → frontend. Por isso todo endpoint mantém o prefixo `/api`.
+- O seed do banco roda automaticamente na primeira subida do backend.
+- Exemplo de execução em produção: `uvicorn server:app --host 0.0.0.0 --port 8001 --workers 2` atrás do proxy, e `yarn build` servido como estático.

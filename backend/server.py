@@ -1,12 +1,16 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, APIRouter, HTTPException, Query, Depends, UploadFile, File, Header, Request, Response
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
+import html
 import os
 import logging
 import asyncio
 import jwt
+import re
+import secrets
 import shutil
 from pathlib import Path
 from pydantic import BaseModel, Field, EmailStr
@@ -14,22 +18,32 @@ from typing import List, Optional, Dict, Any
 import uuid
 from datetime import datetime, timezone, timedelta
 
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+mongo_url = os.environ.get('MONGO_URL', 'mongodb://localhost:27017')
+client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=5000)
+db = client[os.environ.get('DB_NAME', 'aurecasa')]
 
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
 EMAIL_FROM = os.environ.get("EMAIL_FROM", "onboarding@resend.dev")
 EMAIL_OWNER = os.environ.get("EMAIL_OWNER", "")
 ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@aurecasa.com.br")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
-JWT_SECRET = os.environ.get("JWT_SECRET", "dev-secret-change-me")
+JWT_SECRET = os.environ.get("JWT_SECRET", "")
+if not JWT_SECRET:
+    # Sem segredo configurado: gera um efêmero por processo. Sessões admin não
+    # sobrevivem a restarts — configure JWT_SECRET em produção.
+    JWT_SECRET = secrets.token_hex(32)
+    logger.warning("JWT_SECRET não configurado — usando segredo efêmero (sessões admin expiram a cada restart)")
 JWT_ALG = "HS256"
+CORS_ORIGINS = [o.strip() for o in os.environ.get('CORS_ORIGINS', 'http://localhost:3000').split(',') if o.strip()]
 UPLOAD_DIR = Path(__file__).parent / "static" / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+MAX_UPLOAD_BYTES = 5 * 1024 * 1024  # 5 MB
 
 try:
     import resend
@@ -38,7 +52,19 @@ try:
 except Exception:
     resend = None
 
-app = FastAPI(title="Auré Casa API")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    try:
+        await seed_database()
+    except Exception as e:
+        # MongoDB indisponível não deve impedir o boot — endpoints que dependem
+        # do banco retornarão erro até a conexão voltar.
+        logger.warning(f"Seed pulado — MongoDB indisponível? ({e})")
+    yield
+    client.close()
+
+app = FastAPI(title="Auré Casa API", lifespan=lifespan)
 api_router = APIRouter(prefix="/api")
 
 # Serve generated product images
@@ -316,7 +342,8 @@ async def seed_database():
     if count == 0:
         docs = []
         for p in PRODUCTS_SEED:
-            p_full = {**p, "reviews": MOCK_REVIEWS[: (hash(p["id"]) % 3) + 2]}
+            # len() é estável entre execuções (hash() varia com PYTHONHASHSEED)
+            p_full = {**p, "reviews": MOCK_REVIEWS[: (len(p["id"]) % 3) + 2]}
             docs.append(p_full)
         await db.products.insert_many(docs)
         logger.info(f"Seeded {len(docs)} products")
@@ -341,12 +368,13 @@ def _build_products_query(
     if price_q:
         query["price"] = price_q
     if color:
-        query["colors"] = {"$regex": color, "$options": "i"}
+        query["colors"] = {"$regex": re.escape(color), "$options": "i"}
     if q:
+        q_safe = re.escape(q)
         query["$or"] = [
-            {"name": {"$regex": q, "$options": "i"}},
-            {"description": {"$regex": q, "$options": "i"}},
-            {"category": {"$regex": q, "$options": "i"}},
+            {"name": {"$regex": q_safe, "$options": "i"}},
+            {"description": {"$regex": q_safe, "$options": "i"}},
+            {"category": {"$regex": q_safe, "$options": "i"}},
         ]
     return query
 
@@ -433,7 +461,9 @@ class AdminLogin(BaseModel):
 async def admin_login(payload: AdminLogin, response: Response):
     if not ADMIN_PASSWORD:
         raise HTTPException(status_code=503, detail="Admin não configurado")
-    if payload.email != ADMIN_EMAIL or payload.password != ADMIN_PASSWORD:
+    email_ok = secrets.compare_digest(payload.email.encode(), ADMIN_EMAIL.encode())
+    password_ok = secrets.compare_digest(payload.password.encode(), ADMIN_PASSWORD.encode())
+    if not (email_ok and password_ok):
         raise HTTPException(status_code=401, detail="Credenciais inválidas")
     token = jwt.encode(
         {"email": payload.email, "exp": datetime.now(timezone.utc) + timedelta(days=7)},
@@ -463,8 +493,15 @@ async def admin_upload(file: UploadFile = File(...), admin=Depends(require_admin
     ext = {"image/jpeg": ".jpg", "image/jpg": ".jpg", "image/png": ".png", "image/webp": ".webp"}[file.content_type]
     fname = f"{uuid.uuid4().hex}{ext}"
     dest = UPLOAD_DIR / fname
+    size = 0
     with dest.open("wb") as out:
-        shutil.copyfileobj(file.file, out)
+        while chunk := await file.read(1024 * 1024):
+            size += len(chunk)
+            if size > MAX_UPLOAD_BYTES:
+                out.close()
+                dest.unlink(missing_ok=True)
+                raise HTTPException(status_code=413, detail="Arquivo muito grande. Máximo de 5 MB.")
+            out.write(chunk)
     return {"url": f"/api/static/uploads/{fname}", "filename": fname}
 
 async def _send_order_status_email(order: Dict[str, Any]):
@@ -475,28 +512,27 @@ async def _send_order_status_email(order: Dict[str, Any]):
         to_email = cust.get("email")
         if not to_email:
             return False
-        tr = order.get("tracking_code") or ""
-        html = f"""<div style='font-family:Georgia,serif;background:#F9F8F6;padding:32px;color:#2C2825;'>
+        tr = html.escape(order.get("tracking_code") or "")
+        nome = html.escape(cust.get("nome", ""))
+        order_number = html.escape(str(order.get("order_number", "")))
+        status = html.escape(str(order.get("status", "")))
+        body = f"""<div style='font-family:Georgia,serif;background:#F9F8F6;padding:32px;color:#2C2825;'>
 <div style='max-width:560px;margin:0 auto;background:#fff;padding:40px;border-radius:12px;'>
 <h1 style='font-size:24px;font-weight:400;'>Atualização do seu pedido</h1>
-<p>Olá {cust.get('nome','')},</p>
-<p>Seu pedido <b>{order.get('order_number')}</b> agora está: <b>{order.get('status')}</b></p>
+<p>Olá {nome},</p>
+<p>Seu pedido <b>{order_number}</b> agora está: <b>{status}</b></p>
 {f"<p>Código de rastreio: <b>{tr}</b></p>" if tr else ""}
 <p style='color:#8A7D72;font-size:13px;'>Auré Casa</p></div></div>"""
         await asyncio.to_thread(resend.Emails.send, {
             "from": EMAIL_FROM, "to": [to_email],
             "subject": f"[Auré Casa] Pedido {order.get('order_number')} · {order.get('status')}",
-            "html": html,
+            "html": body,
         })
         return True
     except Exception as e:
         logger.warning(f"Order status email failed: {e}")
         return False
 
-
-@api_router.get("/orders")
-async def list_orders():
-    return await db.orders.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
 
 @api_router.get("/orders/{order_id}")
 async def get_order(order_id: str):
@@ -613,13 +649,16 @@ async def contact_form(payload: ContactMessage):
     sent = False
     if resend and RESEND_API_KEY and EMAIL_OWNER:
         try:
+            safe_name = html.escape(payload.name)
+            safe_subject = html.escape(payload.subject or "")
+            safe_message = html.escape(payload.message).replace("\n", "<br>")
             html_admin = f"""
             <div style="font-family: Arial, sans-serif; color:#2C2825;">
               <h2>Novo contato — Auré Casa</h2>
-              <p><b>Nome:</b> {payload.name}</p>
-              <p><b>Email:</b> {payload.email}</p>
-              <p><b>Assunto:</b> {payload.subject}</p>
-              <p><b>Mensagem:</b><br>{payload.message}</p>
+              <p><b>Nome:</b> {safe_name}</p>
+              <p><b>Email:</b> {html.escape(payload.email)}</p>
+              <p><b>Assunto:</b> {safe_subject}</p>
+              <p><b>Mensagem:</b><br>{safe_message}</p>
             </div>
             """
             await asyncio.to_thread(resend.Emails.send, {
@@ -632,7 +671,7 @@ async def contact_form(payload: ContactMessage):
             <div style="font-family: Georgia, serif; background:#F9F8F6; padding: 32px; color:#2C2825;">
               <div style="max-width: 560px; margin:0 auto; background:#FFFFFF; padding:40px; border-radius: 12px;">
                 <h1 style="font-size:24px; font-weight:400;">Recebemos sua mensagem</h1>
-                <p>Olá {payload.name},</p>
+                <p>Olá {safe_name},</p>
                 <p>Obrigado por escrever à Auré Casa. Nossa equipe responderá em breve.</p>
                 <p style="color:#8A7D72; font-size:13px;">Auré Casa · Objetos para os detalhes que transformam a casa.</p>
               </div>
@@ -714,21 +753,12 @@ async def root():
 
 app.include_router(api_router)
 
+# Origens explícitas (nunca "*"): allow_credentials exige origem específica
+# para o cookie de sessão admin funcionar.
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
+    allow_origins=CORS_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
-
-@app.on_event("startup")
-async def on_startup():
-    await seed_database()
-
-@app.on_event("shutdown")
-async def shutdown_db_client():
-    client.close()

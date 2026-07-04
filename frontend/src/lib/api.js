@@ -1,6 +1,6 @@
 import axios from "axios";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "http://localhost:8001";
 export const API = `${BACKEND_URL}/api`;
 
 export const api = axios.create({ baseURL: API });
@@ -22,15 +22,4 @@ export const sendContact = (data) =>
 export const createOrder = (order) =>
     api.post("/orders", order).then((r) => r.data);
 export const getOrder = (id) => api.get(`/orders/${id}`).then((r) => r.data);
-export const listOrders = () => api.get("/orders").then((r) => r.data);
-export const updateOrder = (id, patch) =>
-    api.patch(`/orders/${id}`, patch).then((r) => r.data);
-export const adminStats = () => api.get("/admin/stats").then((r) => r.data);
-export const adminProducts = () =>
-    api.get("/admin/products").then((r) => r.data);
-export const adminUpdateProduct = (id, patch) =>
-    api.patch(`/admin/products/${id}`, patch).then((r) => r.data);
-export const adminNewsletter = () =>
-    api.get("/admin/newsletter").then((r) => r.data);
-export const adminContacts = () =>
-    api.get("/admin/contacts").then((r) => r.data);
+// Operações administrativas ficam em adminApi.js (cookie httpOnly + interceptor 401).

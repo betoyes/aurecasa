@@ -3,16 +3,19 @@
 Backend Regression Test Suite - Auré Casa
 Tests security changes: httpOnly cookies, logout endpoint, dual auth modes, and refactored list_products
 """
+import os
 import requests
 import sys
 from typing import Dict, Any, Optional
+from urllib.parse import urlparse
 
-# Backend URL from frontend/.env
-BASE_URL = "https://aure-product-demo.preview.emergentagent.com/api"
+# Configuráveis por env var; defaults apontam para o backend local
+BASE_URL = os.environ.get("BACKEND_URL", "http://localhost:8001").rstrip("/") + "/api"
+COOKIE_DOMAIN = urlparse(BASE_URL).hostname
 
-# Test credentials from /app/memory/test_credentials.md
-ADMIN_EMAIL = "admin@aurecasa.com.br"
-ADMIN_PASSWORD = "Aure@2026!"
+# Credenciais do admin (as mesmas do backend/.env)
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@aurecasa.com.br")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
 
 # Test counters
 tests_passed = 0
@@ -92,7 +95,7 @@ def test_admin_logout(session_cookie: Optional[str]):
     
     # Create session with cookie
     session = requests.Session()
-    session.cookies.set("aure_admin_session", session_cookie, domain="aure-product-demo.preview.emergentagent.com", path="/api")
+    session.cookies.set("aure_admin_session", session_cookie, domain=COOKIE_DOMAIN, path="/api")
     
     # Call logout
     resp = session.post(f"{BASE_URL}/admin/logout")
@@ -148,7 +151,7 @@ def test_require_admin_cookie_mode(session_cookie: Optional[str]):
     
     # Create session with cookie
     session = requests.Session()
-    session.cookies.set("aure_admin_session", session_cookie, domain="aure-product-demo.preview.emergentagent.com", path="/api")
+    session.cookies.set("aure_admin_session", session_cookie, domain=COOKIE_DOMAIN, path="/api")
     
     # Test /api/admin/verify
     resp = session.get(f"{BASE_URL}/admin/verify")
@@ -186,7 +189,7 @@ def test_require_admin_invalid_cookie():
     
     session = requests.Session()
     session.cookies.set("aure_admin_session", "invalid_token_12345", 
-                       domain="aure-product-demo.preview.emergentagent.com", path="/api")
+                       domain=COOKIE_DOMAIN, path="/api")
     
     resp = session.get(f"{BASE_URL}/admin/verify")
     log_test("GET /api/admin/verify with invalid cookie returns 401", resp.status_code == 401,

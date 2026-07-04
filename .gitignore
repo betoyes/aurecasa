@@ -92,3 +92,6 @@ credentials.json
 frontend/node_modules/.cache/default-development/3.pack
 backend/static/uploads/
 !backend/static/uploads/.gitkeep
+
+# Agent tooling
+.serena/

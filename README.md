@@ -13,32 +13,38 @@ E-commerce premium brasileiro de objetos contemporâneos para casa — organiza�
 ## Estrutura
 
 ```
-/app
+.
 ├── backend/           # API FastAPI (server.py único) + uploads em static/uploads
 ├── frontend/          # SPA React (src/pages, src/components, src/lib)
 ├── docs/              # Documentação (arquitetura, admin, deploy, testes)
-├── memory/            # PRD e credenciais de teste
+├── memory/            # PRD
 └── test_result.md     # Histórico de testes dos agentes
 ```
+
+## Pré-requisitos
+
+- Python 3.11+
+- Node.js 18+ e Yarn 1.x
+- MongoDB rodando localmente (`brew install mongodb-community && brew services start mongodb-community`) ou via Docker (`docker run -d -p 27017:27017 mongo:7`)
 
 ## Rodando localmente
 
 ```bash
 # Backend
 cd backend
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env   # preencha os valores
+cp .env.example .env   # defina ADMIN_PASSWORD e JWT_SECRET
 uvicorn server:app --host 0.0.0.0 --port 8001 --reload
 
-# Frontend
+# Frontend (em outro terminal)
 cd frontend
 yarn install
 cp .env.example .env   # aponte REACT_APP_BACKEND_URL
 yarn start
 ```
 
-No ambiente Emergent os serviços são gerenciados pelo supervisor:
-`sudo supervisorctl restart backend frontend`
+O banco é populado automaticamente com os produtos de demonstração na primeira subida do backend.
 
 ## Funcionalidades
 

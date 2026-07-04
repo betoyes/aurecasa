@@ -8,8 +8,8 @@
 //     'login-submit-button', 'cart-quantity-input', 'product-card-image'.
 //   - Reference them in JSX as `data-testid={LOGIN.submitButton}`.
 //
-// Why kebab-case values: required by qabot's CSS-attribute selector matcher
-// and the lint rule `emergent(kebab-case-testid)`.
+// Why kebab-case values: works with CSS-attribute selector matchers used
+// by E2E tooling (e.g. Playwright `[data-testid="..."]`).
 
 export const LOGIN = {
 	emailInput: 'login-email-input',
