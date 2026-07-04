@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { adminStats, adminProducts, listOrders, adminNewsletter, adminContacts } from "@/lib/api";
-import { adminUpdateOrder, adminVerify, clearToken, getToken } from "@/lib/adminApi";
+import { adminUpdateOrder, adminVerify, clearToken, getToken, adminGetStats, adminGetProducts, adminGetOrders, adminGetNewsletter, adminGetContacts } from "@/lib/adminApi";
 import { brl } from "@/lib/utils-brl";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
@@ -29,9 +28,9 @@ export default function Admin() {
 
     const load = async () => {
         try {
-            const [s, o, p, n, c] = await Promise.all([adminStats(), listOrders(), adminProducts(), adminNewsletter(), adminContacts()]);
+            const [s, o, p, n, c] = await Promise.all([adminGetStats(), adminGetOrders(), adminGetProducts(), adminGetNewsletter(), adminGetContacts()]);
             setStats(s); setOrders(o); setProducts(p); setNewsletter(n); setContacts(c);
-        } catch (e) { console.error(e); }
+        } catch (e) { /* 401 handled by interceptor */ }
     };
 
     useEffect(() => { if (authed) load(); }, [authed]);
@@ -48,7 +47,13 @@ export default function Admin() {
 
     const logout = () => { clearToken(); navigate("/admin/login"); };
 
-    if (!authed) return <div className="pt-40 text-center" style={{ color: "var(--aure-muted)" }}>Verificando…</div>;
+    if (!authed) return (
+        <div className="pt-40 text-center fade-in" data-testid="admin-loading">
+            <div className="inline-block w-6 h-6 rounded-full mb-4" style={{ border: "2px solid var(--aure-border-dark)", borderTopColor: "var(--aure-ink)", animation: "spin 0.9s linear infinite" }} />
+            <div className="ui-label" style={{ color: "var(--aure-muted)" }}>Verificando sessão…</div>
+            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        </div>
+    );
 
     return (
         <div className="pt-28 pb-24 fade-in" data-testid="admin-page" style={{ background: "var(--aure-bg)" }}>

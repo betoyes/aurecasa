@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { adminUpload, adminCreateProduct, adminUpdateProductFull, adminDeleteProduct } from "@/lib/adminApi";
-import { adminProducts } from "@/lib/api";
+import { adminUpload, adminCreateProduct, adminUpdateProductFull, adminDeleteProduct, adminGetProducts } from "@/lib/adminApi";
 import { toast } from "sonner";
 import { X, Upload, Star, Plus, Trash2, Link2 } from "lucide-react";
 import { brl } from "@/lib/utils-brl";
@@ -33,7 +32,7 @@ export default function AdminProducts() {
     const [editing, setEditing] = useState(null);
     const [imgUrl, setImgUrl] = useState("");
 
-    const load = () => adminProducts().then(setProducts);
+    const load = () => adminGetProducts().then(setProducts).catch(() => {});
     useEffect(() => { load(); }, []);
 
     const openNew = () => setEditing(empty());
