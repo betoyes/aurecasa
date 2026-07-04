@@ -44,7 +44,7 @@ api_router = APIRouter(prefix="/api")
 # Serve generated product images
 STATIC_DIR = ROOT_DIR / "static"
 STATIC_DIR.mkdir(exist_ok=True)
-app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+app.mount("/api/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 # ============ MODELS ============
 def now_iso():
@@ -441,7 +441,7 @@ async def admin_upload(file: UploadFile = File(...), admin=Depends(require_admin
     dest = UPLOAD_DIR / fname
     with dest.open("wb") as out:
         shutil.copyfileobj(file.file, out)
-    return {"url": f"/static/uploads/{fname}", "filename": fname}
+    return {"url": f"/api/static/uploads/{fname}", "filename": fname}
 
 async def _send_order_status_email(order: Dict[str, Any]):
     if not (resend and RESEND_API_KEY):
