@@ -1,0 +1,138 @@
+{
+  "theme": "Light",
+  "archetype": "1 (Organic & Earthy)",
+  "brand": {
+    "name": "Auré Casa",
+    "tagline": "Objetos para os detalhes que transformam a casa.",
+    "perception": "Contemporary, refined, warm, editorial, accessible-premium, minimalist but not cold. Brazilian, urban, tasteful, Pinterest-worthy."
+  },
+  "typography": {
+    "google_fonts_url": "https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Outfit:wght@300;400;500;600&display=swap",
+    "heading_font": "'Cormorant Garamond', serif",
+    "body_font": "'Outfit', sans-serif",
+    "rules": {
+      "h1": "text-5xl sm:text-6xl font-light tracking-tight text-[#2C2825] leading-tight",
+      "h2": "text-3xl sm:text-4xl font-light tracking-tight text-[#2C2825]",
+      "h3": "text-2xl font-medium text-[#2C2825]",
+      "body": "text-base text-[#8A7D72] font-light leading-relaxed",
+      "ui_labels": "text-xs font-medium uppercase tracking-[0.2em] text-[#8A7D72]",
+      "prices": "text-sm font-medium text-[#2C2825]"
+    }
+  },
+  "colors": {
+    "background": {
+      "primary": "#F9F8F6", 
+      "secondary": "#F1EFEB"
+    },
+    "surface": {
+      "white": "#FFFFFF",
+      "glass": "rgba(249, 248, 246, 0.85)"
+    },
+    "text": {
+      "primary": "#2C2825",
+      "secondary": "#8A7D72",
+      "light": "#F9F8F6"
+    },
+    "accents": {
+      "verde_salvia": "#9CA896",
+      "terracota_suave": "#C88E77",
+      "lavanda_muted": "#B3A5B8"
+    },
+    "borders": {
+      "light": "#E6E4E0",
+      "dark": "#D1CEC7"
+    }
+  },
+  "layout_spacing": {
+    "container": "max-w-7xl mx-auto px-6 md:px-12",
+    "section_padding": "py-20 md:py-32",
+    "gap_large": "gap-12 md:gap-24",
+    "gap_medium": "gap-8 md:gap-12",
+    "radius": {
+      "subtle": "rounded-xl",
+      "pill": "rounded-full"
+    },
+    "shadows": {
+      "soft": "shadow-[0_8px_40px_rgba(44,40,37,0.04)]",
+      "hover": "shadow-[0_16px_60px_rgba(44,40,37,0.08)]"
+    }
+  },
+  "components": {
+    "header": {
+      "style": "fixed top-0 w-full z-50 backdrop-blur-xl bg-[#F9F8F6]/85 border-b border-[#E6E4E0]",
+      "nav_links": "text-xs uppercase tracking-[0.15em] text-[#2C2825] hover:text-[#C88E77] transition-colors"
+    },
+    "buttons": {
+      "primary": "bg-[#2C2825] text-[#F9F8F6] px-8 py-4 rounded-full text-sm font-medium hover:bg-[#C88E77] transition-colors duration-300",
+      "secondary": "bg-transparent border border-[#2C2825] text-[#2C2825] px-8 py-4 rounded-full text-sm font-medium hover:bg-[#F1EFEB] transition-colors duration-300",
+      "ghost": "text-xs uppercase tracking-[0.15em] text-[#2C2825] underline decoration-1 underline-offset-4 hover:text-[#C88E77] transition-colors"
+    },
+    "product_card": {
+      "container": "group cursor-pointer flex flex-col gap-4",
+      "image_wrapper": "aspect-[4/5] bg-[#F1EFEB] rounded-xl overflow-hidden relative",
+      "image": "object-cover w-full h-full group-hover:scale-105 transition-transform duration-700 ease-out",
+      "title": "text-lg font-medium text-[#2C2825] font-serif",
+      "price": "text-sm text-[#8A7D72] font-sans"
+    },
+    "category_card": {
+      "container": "relative overflow-hidden rounded-2xl group cursor-pointer aspect-square",
+      "overlay": "absolute inset-0 bg-black/10 group-hover:bg-black/20 transition-colors duration-500",
+      "text_wrapper": "absolute bottom-8 left-8 z-10",
+      "title": "text-3xl text-white font-serif"
+    }
+  },
+  "media": {
+    "hero": {
+      "url": "https://images.unsplash.com/photo-1648475238180-7333e740615d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHw0fHxjb250ZW1wb3JhcnklMjBtaW5pbWFsaXN0JTIwaG9tZSUyMGRlY29yJTIwZWRpdG9yaWFsfGVufDB8fHx8MTc4MzEzNDIwNnww&ixlib=rb-4.1.0&q=85",
+      "description": "A beautiful ivory architectural curve in a contemporary living room"
+    },
+    "product_spotlight": {
+      "url": "https://images.unsplash.com/photo-1581783342308-f792dbdd27c5?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMzN8MHwxfHNlYXJjaHw0fHxjZXJhbWljJTIwdmFzZSUyMG1pbmltYWxpc3QlMjBzdGlsbCUyMGxpZmV8ZW58MHx8fHwxNzgzMTM0MjA2fDA&ixlib=rb-4.1.0&q=85",
+      "description": "White ceramic vase with delicate branch, beautiful editorial light"
+    },
+    "categories": [
+      {
+        "name": "Decoração",
+        "url": "https://images.unsplash.com/photo-1667312939978-64cf31718a6e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTB8MHwxfHNlYXJjaHwxfHxtaW5pbWFsaXN0JTIwYWVzdGhldGljJTIwaG9tZSUyMG9yZ2FuaXphdGlvbiUyMG9iamVjdHMlMjBuYXR1cmFsJTIwbGlnaHR8ZW58MHx8fHwxNzgzMTM0MjE0fDA&ixlib=rb-4.1.0&q=85",
+        "description": "Lamp and books on table"
+      },
+      {
+        "name": "Mesa & Cozinha",
+        "url": "https://images.unsplash.com/photo-1648535295380-951975feacc9?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NzN8MHwxfHNlYXJjaHw0fHxtaW5pbWFsaXN0JTIwa2l0Y2hlbiUyMG9iamVjdHMlMjBjb2ZmZWUlMjBuYXR1cmFsJTIwbGlnaHR8ZW58MHx8fHwxNzgzMTM0MjA2fDA&ixlib=rb-4.1.0&q=85",
+        "description": "Minimalist cup and saucer"
+      },
+      {
+        "name": "Organização",
+        "url": "https://images.unsplash.com/photo-1511389026070-a14ae610a1be?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwyfHxjb250ZW1wb3JhcnklMjBtaW5pbWFsaXN0JTIwaG9tZSUyMGRlY29yJTIwZWRpdG9yaWFsfGVufDB8fHx8MTc4MzEzNDIwNnww&ixlib=rb-4.1.0&q=85",
+        "description": "Green plant on white cabinet"
+      },
+      {
+        "name": "Coleção Argila",
+        "url": "https://images.unsplash.com/photo-1631125915902-d8abe9225ff2?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMzN8MHwxfHNlYXJjaHwxfHxjZXJhbWljJTIwdmFzZSUyMG1pbmltYWxpc3QlMjBzdGlsbCUyMGxpZmV8ZW58MHx8fHwxNzgzMTM0MjA2fDA&ixlib=rb-4.1.0&q=85",
+        "description": "Brown clay vases"
+      }
+    ],
+    "editorial_blocks": [
+      {
+        "url": "https://images.pexels.com/photos/7303844/pexels-photo-7303844.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Simple elegant scene with a wooden table, teapot, and chair"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1687191883721-257d8cad5b54?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMzN8MHwxfHNlYXJjaHwzfHxjZXJhbWljJTIwdmFzZSUyMG1pbmltYWxpc3QlMjBzdGlsbCUyMGxpZmV8ZW58MHx8fHwxNzgzMTM0MjA2fDA&ixlib=rb-4.1.0&q=85",
+        "description": "White vase on top of table"
+      }
+    ]
+  },
+  "testing": {
+    "rules": "All interactive and key informational elements MUST include a data-testid attribute in kebab-case."
+  },
+  "instructions_to_main_agent": [
+    "Ensure the entire application uses the Ivory/Warm Off-White background #F9F8F6 (Areia). Do not use pure white backgrounds except for specific product cards or isolated surfaces.",
+    "Inject Google Fonts 'Cormorant Garamond' and 'Outfit' into the index.html or root layout.",
+    "Do not use Shadcn card component styling with standard borders for product cards; use the custom flat design described in 'product_card'.",
+    "Hero section should be an immersive editorial layout, potentially split-screen or featuring the hero image large with minimal overlay.",
+    "Add to Cart, Wishlist, and Checkout flows should feel completely seamless, using slide-out drawers (e.g. Shadcn Sheet customized with rounded corners) for the mini-cart instead of full-page redirects where possible.",
+    "Admin dashboard can use a slightly more standard Shadcn layout, but tint the background to match the brand (#F9F8F6) and use the #9CA896 (Verde Sálvia) for positive metrics.",
+    "Avoid generic 'e-commerce' aesthetics. No bright red sale tags; use muted Terracota (#C88E77) for accents."
+  ]
+}
