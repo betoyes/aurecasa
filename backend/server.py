@@ -1,72 +1,603 @@
-from fastapi import FastAPI, APIRouter
+from fastapi import FastAPI, APIRouter, HTTPException, Query
+from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
+import asyncio
 from pathlib import Path
-from pydantic import BaseModel, Field, ConfigDict
-from typing import List
+from pydantic import BaseModel, Field, EmailStr
+from typing import List, Optional, Dict, Any
 import uuid
 from datetime import datetime, timezone
-
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-# MongoDB connection
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
-# Create the main app without a prefix
-app = FastAPI()
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
+EMAIL_FROM = os.environ.get("EMAIL_FROM", "onboarding@resend.dev")
+EMAIL_OWNER = os.environ.get("EMAIL_OWNER", "")
 
-# Create a router with the /api prefix
+try:
+    import resend
+    if RESEND_API_KEY:
+        resend.api_key = RESEND_API_KEY
+except Exception:
+    resend = None
+
+app = FastAPI(title="Auré Casa API")
 api_router = APIRouter(prefix="/api")
 
+# Serve generated product images
+STATIC_DIR = ROOT_DIR / "static"
+STATIC_DIR.mkdir(exist_ok=True)
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
-# Define Models
-class StatusCheck(BaseModel):
-    model_config = ConfigDict(extra="ignore")  # Ignore MongoDB's _id field
-    
+# ============ MODELS ============
+def now_iso():
+    return datetime.now(timezone.utc).isoformat()
+
+class Product(BaseModel):
+    id: str
+    slug: str
+    name: str
+    category: str
+    category_slug: str
+    price: float
+    description: str
+    long_description: Optional[str] = ""
+    colors: List[str] = []
+    dimensions: str = ""
+    materials: str = ""
+    care: str = ""
+    shipping_info: str = ""
+    use_cases: List[str] = []
+    variants: List[str] = []
+    images: List[str] = []
+    stock_status: str = "Produzido sob demanda"
+    production_time: str = "Produção em até 5 dias úteis"
+    important_note: Optional[str] = ""
+    featured: bool = False
+    new: bool = False
+    bestseller: bool = False
+    combines_with: List[str] = []
+    reviews: List[Dict[str, Any]] = []
+
+class NewsletterSignup(BaseModel):
+    email: EmailStr
+    name: Optional[str] = ""
+
+class ContactMessage(BaseModel):
+    name: str
+    email: EmailStr
+    subject: Optional[str] = "Contato Auré Casa"
+    message: str
+
+class OrderItem(BaseModel):
+    product_id: str
+    name: str
+    color: Optional[str] = ""
+    variant: Optional[str] = ""
+    quantity: int = 1
+    price: float
+
+class OrderCreate(BaseModel):
+    customer: Dict[str, Any]
+    address: Dict[str, Any]
+    items: List[OrderItem]
+    subtotal: float
+    shipping: float = 0.0
+    discount: float = 0.0
+    total: float
+    payment_method: str  # pix | credit_card | boleto
+    coupon: Optional[str] = ""
+    installments: Optional[int] = 1
+
+class Order(OrderCreate):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    client_name: str
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    order_number: str = Field(default_factory=lambda: f"AC{datetime.now().strftime('%y%m%d')}{uuid.uuid4().hex[:6].upper()}")
+    status: str = "Pedido recebido"
+    created_at: str = Field(default_factory=now_iso)
+    tracking_code: Optional[str] = ""
 
-class StatusCheckCreate(BaseModel):
-    client_name: str
+class CouponCheck(BaseModel):
+    code: str
+    subtotal: float
 
-# Add your routes to the router instead of directly to app
+class CEPCheck(BaseModel):
+    cep: str
+
+# ============ SEED DATA ============
+# Using curated Unsplash editorial imagery. Can be replaced with AI-generated via scripts/generate_product_images.py
+
+PRODUCTS_SEED = [
+    {
+        "id": "organizador-nodulo", "slug": "organizador-nodulo",
+        "name": "Organizador Nódulo", "category": "Organização", "category_slug": "organizacao",
+        "price": 89.00,
+        "description": "Organizador de divisórias suaves para reunir os pequenos itens que normalmente se espalham pela bancada. Ideal para mesa de trabalho, penteadeira, cozinha ou lavabo.",
+        "long_description": "Uma peça pensada para o cotidiano. As divisórias com curvas suaves acomodam objetos de diferentes tamanhos sem criar visuais rígidos. Perfeito para reunir chaves, canetas, joias e pequenos utensílios.",
+        "colors": ["Areia", "Verde Sálvia", "Terracota Clara", "Off-white"],
+        "dimensions": "18 x 12 x 10 cm",
+        "materials": "Produzido sob demanda em material de origem vegetal. As sutis camadas fazem parte da textura e da identidade de cada peça.",
+        "care": "Limpeza com pano macio levemente úmido. Evitar detergentes abrasivos e exposição prolongada ao sol.",
+        "shipping_info": "Enviamos para todo o Brasil. Produção em até 5 dias úteis, mais o prazo de transporte.",
+        "use_cases": ["Home office", "Banheiro", "Penteadeira", "Cozinha"],
+        "images": [
+            "https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?w=1200&q=85&auto=format",
+            "https://images.unsplash.com/photo-1567016432779-094069958ea5?w=1200&q=85&auto=format",
+            "https://images.unsplash.com/photo-1631679706909-1844bbd07221?w=1200&q=85&auto=format",
+            "https://images.unsplash.com/photo-1615529182904-14819c35db37?w=1200&q=85&auto=format",
+        ],
+        "featured": True, "new": True, "bestseller": True,
+        "combines_with": ["porta-utensilios-canto", "bandeja-ritual"],
+    },
+    {
+        "id": "bandeja-ritual", "slug": "bandeja-ritual",
+        "name": "Bandeja Ritual", "category": "Bancada & Lavabo", "category_slug": "bancada-lavabo",
+        "price": 119.00,
+        "description": "Uma bandeja de linhas baixas e textura delicada para reunir perfumes, sabonetes, velas e objetos que fazem parte da rotina.",
+        "long_description": "Pensada para trazer ordem visual e uma pausa contemplativa à bancada. As linhas baixas e o volume compacto tornam a Bandeja Ritual versátil para lavabos, mesas laterais e criados-mudos.",
+        "colors": ["Areia", "Café com Leite", "Off-white"],
+        "dimensions": "26 x 16 x 3 cm",
+        "materials": "Produzido sob demanda em material de origem vegetal. As sutis camadas fazem parte da textura e da identidade de cada peça.",
+        "care": "Limpeza com pano macio levemente úmido. Não indicado para contato prolongado com água.",
+        "shipping_info": "Enviamos para todo o Brasil. Produção em até 5 dias úteis.",
+        "use_cases": ["Lavabo", "Criado-mudo", "Aparador"],
+        "images": [
+            "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?w=1200&q=85&auto=format",
+            "https://images.unsplash.com/photo-1584589167171-541ce45f1eea?w=1200&q=85&auto=format",
+            "https://images.unsplash.com/photo-1608571423902-eed4a5ad8108?w=1200&q=85&auto=format",
+            "https://images.unsplash.com/photo-1600566753051-6057a2f5c3d5?w=1200&q=85&auto=format",
+        ],
+        "featured": True, "new": True, "bestseller": False,
+        "combines_with": ["saboneteira-onda", "vaso-almada"],
+    },
+    {
+        "id": "saboneteira-onda", "slug": "saboneteira-onda",
+        "name": "Saboneteira Onda", "category": "Bancada & Lavabo", "category_slug": "bancada-lavabo",
+        "price": 49.00,
+        "description": "Saboneteira escultural com ondulações que elevam o sabonete e ajudam a manter a bancada mais seca e organizada.",
+        "long_description": "As ondulações desenham um relevo sutil que permite a drenagem natural, mantendo o sabonete seco por mais tempo. Um objeto pequeno com presença notável.",
+        "colors": ["Verde Sálvia", "Areia", "Terracota Clara"],
+        "dimensions": "13 x 9 x 3 cm",
+        "materials": "Produzido sob demanda em material de origem vegetal. As sutis camadas fazem parte da textura e da identidade de cada peça.",
+        "care": "Enxaguar e secar após o uso. Limpar com pano macio.",
+        "shipping_info": "Enviamos para todo o Brasil. Produção em até 5 dias úteis.",
+        "use_cases": ["Lavabo", "Banheiro", "Cozinha"],
+        "images": [
+            "https://images.unsplash.com/photo-1608571423902-eed4a5ad8108?w=1200&q=85&auto=format",
+            "https://images.unsplash.com/photo-1600566753343-6ba3f3c6a2c1?w=1200&q=85&auto=format",
+            "https://images.unsplash.com/photo-1584589167171-541ce45f1eea?w=1200&q=85&auto=format",
+            "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?w=1200&q=85&auto=format",
+        ],
+        "featured": True, "new": False, "bestseller": True,
+        "combines_with": ["bandeja-ritual"],
+    },
+    {
+        "id": "cachepo-trama", "slug": "cachepo-trama",
+        "name": "Cachepô Trama", "category": "Objetos Decorativos", "category_slug": "objetos-decorativos",
+        "price": 109.00,
+        "description": "Cachepô de textura contínua e presença discreta para plantas, flores secas e composições de estante.",
+        "long_description": "A trama contínua da superfície cria um jogo delicado de luz e sombra. Uma peça que ganha vida em estantes, aparadores e mesas laterais.",
+        "colors": ["Off-white", "Argila", "Verde Sálvia"],
+        "dimensions": "14 x 14 x 15 cm",
+        "materials": "Produzido sob demanda em material de origem vegetal. As sutis camadas fazem parte da textura e da identidade de cada peça.",
+        "care": "Utilizar com vaso interno para plantas com regas. Limpar com pano macio.",
+        "shipping_info": "Enviamos para todo o Brasil. Produção em até 5 dias úteis.",
+        "important_note": "Indicado para uso com vaso interno de plástico ou vidro.",
+        "use_cases": ["Sala", "Home office", "Aparador"],
+        "images": [
+            "https://images.unsplash.com/photo-1493663284031-b7e3aefcae8e?w=1200&q=85&auto=format",
+            "https://images.unsplash.com/photo-1602751584552-8ba73aad10e1?w=1200&q=85&auto=format",
+            "https://images.unsplash.com/photo-1485955900006-10f4d324d411?w=1200&q=85&auto=format",
+            "https://images.unsplash.com/photo-1611262588024-d12430b98920?w=1200&q=85&auto=format",
+        ],
+        "featured": False, "new": True, "bestseller": False,
+        "combines_with": ["vaso-almada"],
+    },
+    {
+        "id": "vaso-almada", "slug": "vaso-almada",
+        "name": "Vaso Almada", "category": "Objetos Decorativos", "category_slug": "objetos-decorativos",
+        "price": 139.00,
+        "description": "Um vaso de volume macio e geometria acolhedora. Uma peça de presença para aparadores, estantes e mesas laterais.",
+        "long_description": "O Vaso Almada nasceu de um estudo de volumes suaves. Sua base larga e boca contida convidam a composições com galhos secos, flores singulares ou apenas o próprio silêncio.",
+        "colors": ["Lavanda Suave", "Areia", "Rosa Queimado"],
+        "dimensions": "16 x 16 x 18 cm",
+        "materials": "Produzido sob demanda em material de origem vegetal. As sutis camadas fazem parte da textura e da identidade de cada peça.",
+        "care": "Utilizar com recipiente interno de vidro para arranjos com água.",
+        "shipping_info": "Enviamos para todo o Brasil. Produção em até 5 dias úteis.",
+        "important_note": "Ideal com galhos secos ou recipiente interno de vidro.",
+        "use_cases": ["Sala", "Aparador", "Home office"],
+        "images": [
+            "https://images.unsplash.com/photo-1581783342308-f792dbdd27c5?w=1200&q=85&auto=format",
+            "https://images.unsplash.com/photo-1667239321923-c9f75a7c68f2?w=1200&q=85&auto=format",
+            "https://images.unsplash.com/photo-1615529182904-14819c35db37?w=1200&q=85&auto=format",
+            "https://images.unsplash.com/photo-1631125915902-d8abe9225ff2?w=1200&q=85&auto=format",
+        ],
+        "featured": True, "new": True, "bestseller": True,
+        "combines_with": ["cachepo-trama", "bandeja-ritual"],
+    },
+    {
+        "id": "porta-utensilios-canto", "slug": "porta-utensilios-canto",
+        "name": "Porta-utensílios Canto", "category": "Organização", "category_slug": "organizacao",
+        "price": 79.00,
+        "description": "Organizador compacto de cantos arredondados para canetas, pincéis, escovas ou utensílios de uso diário.",
+        "long_description": "Compacto e discreto, funciona tanto na mesa de trabalho quanto na bancada do banheiro. Uma peça neutra que se integra a qualquer paleta.",
+        "colors": ["Off-white", "Verde Sálvia", "Argila"],
+        "dimensions": "14 x 9 x 11 cm",
+        "materials": "Produzido sob demanda em material de origem vegetal. As sutis camadas fazem parte da textura e da identidade de cada peça.",
+        "care": "Limpeza com pano macio levemente úmido.",
+        "shipping_info": "Enviamos para todo o Brasil. Produção em até 5 dias úteis.",
+        "use_cases": ["Home office", "Banheiro", "Cozinha"],
+        "images": [
+            "https://images.unsplash.com/photo-1617806118233-18e1de247200?w=1200&q=85&auto=format",
+            "https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?w=1200&q=85&auto=format",
+            "https://images.unsplash.com/photo-1567016432779-094069958ea5?w=1200&q=85&auto=format",
+            "https://images.unsplash.com/photo-1631679706909-1844bbd07221?w=1200&q=85&auto=format",
+        ],
+        "featured": False, "new": False, "bestseller": True,
+        "combines_with": ["organizador-nodulo"],
+    },
+    {
+        "id": "bowl-casca", "slug": "bowl-casca",
+        "name": "Bowl Casca", "category": "Mesa & Receber", "category_slug": "mesa-receber",
+        "price": 129.00,
+        "description": "Um bowl de duas partes pensado para servir pistaches e acomodar as cascas com elegância. Feito para encontros despretensiosos e bons detalhes à mesa.",
+        "long_description": "O Bowl Casca traz uma solução gentil para servir aperitivos com cascas. A peça interna acomoda pistaches, azeitonas ou nozes, enquanto a borda externa recebe os descartes sem quebrar o ritmo da conversa.",
+        "colors": ["Mostarda Suave", "Verde Oliva", "Terracota"],
+        "dimensions": "20 cm de diâmetro x 9 cm de altura",
+        "materials": "Produzido sob demanda em material de origem vegetal. As sutis camadas fazem parte da textura e da identidade de cada peça.",
+        "care": "Limpar com pano macio. Para alimentos, utilizar recipiente interno adequado.",
+        "shipping_info": "Enviamos para todo o Brasil. Produção em até 5 dias úteis.",
+        "important_note": "Peça decorativa e de servir. Para alimentos, utilizar recipiente interno adequado.",
+        "use_cases": ["Mesa posta", "Aperitivos", "Encontros"],
+        "images": [
+            "https://images.unsplash.com/photo-1610701596007-11502861dcfa?w=1200&q=85&auto=format",
+            "https://images.unsplash.com/photo-1578749556568-bc2c40e68b61?w=1200&q=85&auto=format",
+            "https://images.unsplash.com/photo-1610478920392-95888b3c6ea3?w=1200&q=85&auto=format",
+            "https://images.unsplash.com/photo-1567696911980-2eed69a46042?w=1200&q=85&auto=format",
+        ],
+        "featured": True, "new": True, "bestseller": False,
+        "combines_with": ["porta-copos-laco", "bandeja-ritual"],
+    },
+    {
+        "id": "porta-copos-laco", "slug": "porta-copos-laco",
+        "name": "Porta-copos Laço", "category": "Mesa & Receber", "category_slug": "mesa-receber",
+        "price": 69.00,
+        "description": "Conjunto de porta-copos com desenho contínuo e leveza gráfica. Um detalhe simples para cafés, encontros e mesas do dia a dia.",
+        "long_description": "O desenho contínuo do Laço se apresenta como uma linha delicada em torno do copo. Um pequeno gesto gráfico que compõe mesas discretas e sofisticadas.",
+        "colors": ["Areia", "Café com Leite", "Off-white"],
+        "dimensions": "10 x 10 cm cada",
+        "variants": ["Kit com 2", "Kit com 4"],
+        "materials": "Produzido sob demanda em material de origem vegetal.",
+        "care": "Limpar com pano macio levemente úmido.",
+        "shipping_info": "Enviamos para todo o Brasil. Produção em até 5 dias úteis.",
+        "use_cases": ["Mesa posta", "Café", "Encontros"],
+        "images": [
+            "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=1200&q=85&auto=format",
+            "https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=1200&q=85&auto=format",
+            "https://images.unsplash.com/photo-1516600164266-f3b8166ae679?w=1200&q=85&auto=format",
+            "https://images.unsplash.com/photo-1494537176433-7a3c4ef2046f?w=1200&q=85&auto=format",
+        ],
+        "featured": False, "new": False, "bestseller": True,
+        "combines_with": ["bowl-casca"],
+    },
+]
+
+MOCK_REVIEWS = [
+    {"author": "Marina S.", "rating": 5, "date": "2026-01-10", "title": "Detalhes que fazem diferença", "text": "Peça linda, textura sutil e cor exatamente como na foto. A embalagem também é caprichada."},
+    {"author": "Ana Paula L.", "rating": 5, "date": "2025-12-18", "title": "Perfeito para o meu lavabo", "text": "Combinou com tudo e ficou lindo. Recomendo demais."},
+    {"author": "Rafael C.", "rating": 4, "date": "2025-12-02", "title": "Presente muito bem recebido", "text": "Dei de presente para a minha irmã que ama design. Amou. Chegou dentro do prazo."},
+    {"author": "Clara M.", "rating": 5, "date": "2026-01-22", "title": "Sofisticado e discreto", "text": "É daquelas peças que a gente olha e sente bem. Muito bem acabada."},
+]
+
+DEMO_COUPONS = {
+    "BEMVINDO10": {"type": "percent", "value": 10, "min": 0, "desc": "10% off no primeiro pedido"},
+    "FRETEGRATIS": {"type": "shipping", "value": 0, "min": 200, "desc": "Frete grátis acima de R$ 200"},
+}
+
+# ============ SEED FUNCTION ============
+async def seed_database():
+    count = await db.products.count_documents({})
+    if count == 0:
+        docs = []
+        for p in PRODUCTS_SEED:
+            p_full = {**p, "reviews": MOCK_REVIEWS[: (hash(p["id"]) % 3) + 2]}
+            docs.append(p_full)
+        await db.products.insert_many(docs)
+        logger.info(f"Seeded {len(docs)} products")
+
+# ============ PRODUCT ROUTES ============
+@api_router.get("/products")
+async def list_products(
+    category: Optional[str] = None,
+    featured: Optional[bool] = None,
+    new: Optional[bool] = None,
+    bestseller: Optional[bool] = None,
+    min_price: Optional[float] = None,
+    max_price: Optional[float] = None,
+    color: Optional[str] = None,
+    q: Optional[str] = None,
+    sort: Optional[str] = None,
+):
+    query: Dict[str, Any] = {}
+    if category:
+        query["category_slug"] = category
+    if featured is not None:
+        query["featured"] = featured
+    if new is not None:
+        query["new"] = new
+    if bestseller is not None:
+        query["bestseller"] = bestseller
+    price_q: Dict[str, float] = {}
+    if min_price is not None:
+        price_q["$gte"] = min_price
+    if max_price is not None:
+        price_q["$lte"] = max_price
+    if price_q:
+        query["price"] = price_q
+    if color:
+        query["colors"] = {"$regex": color, "$options": "i"}
+    if q:
+        query["$or"] = [
+            {"name": {"$regex": q, "$options": "i"}},
+            {"description": {"$regex": q, "$options": "i"}},
+            {"category": {"$regex": q, "$options": "i"}},
+        ]
+    sort_arg: List[tuple] = [("name", 1)]
+    if sort == "price_asc":
+        sort_arg = [("price", 1)]
+    elif sort == "price_desc":
+        sort_arg = [("price", -1)]
+    elif sort == "new":
+        sort_arg = [("new", -1), ("name", 1)]
+    elif sort == "bestseller":
+        sort_arg = [("bestseller", -1), ("name", 1)]
+    cursor = db.products.find(query, {"_id": 0}).sort(sort_arg)
+    return await cursor.to_list(500)
+
+@api_router.get("/products/{slug}")
+async def get_product(slug: str):
+    p = await db.products.find_one({"slug": slug}, {"_id": 0})
+    if not p:
+        raise HTTPException(status_code=404, detail="Produto não encontrado")
+    return p
+
+@api_router.get("/categories")
+async def list_categories():
+    return [
+        {"slug": "bancada-lavabo", "name": "Bancada & Lavabo", "description": "Objetos para o cuidado diário e composições de bancada."},
+        {"slug": "organizacao", "name": "Organização", "description": "Peças para reunir os pequenos itens do dia a dia."},
+        {"slug": "mesa-receber", "name": "Mesa & Receber", "description": "Detalhes para servir e receber com intenção."},
+        {"slug": "presentes", "name": "Presentes", "description": "Peças selecionadas para presentear com sensibilidade."},
+        {"slug": "objetos-decorativos", "name": "Objetos Decorativos", "description": "Vasos, cachepôs e peças de presença para os espaços."},
+    ]
+
+# ============ ORDER ROUTES ============
+@api_router.post("/orders")
+async def create_order(order_in: OrderCreate):
+    order = Order(**order_in.model_dump())
+    doc = order.model_dump()
+    await db.orders.insert_one(doc)
+    return {k: v for k, v in doc.items() if k != "_id"}
+
+@api_router.get("/orders")
+async def list_orders():
+    return await db.orders.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
+
+@api_router.get("/orders/{order_id}")
+async def get_order(order_id: str):
+    o = await db.orders.find_one({"$or": [{"id": order_id}, {"order_number": order_id}]}, {"_id": 0})
+    if not o:
+        raise HTTPException(status_code=404, detail="Pedido não encontrado")
+    return o
+
+@api_router.patch("/orders/{order_id}")
+async def update_order(order_id: str, patch: Dict[str, Any]):
+    allowed = {"status", "tracking_code"}
+    update = {k: v for k, v in patch.items() if k in allowed}
+    if not update:
+        raise HTTPException(status_code=400, detail="Nenhum campo válido")
+    r = await db.orders.update_one({"id": order_id}, {"$set": update})
+    if r.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Pedido não encontrado")
+    return await db.orders.find_one({"id": order_id}, {"_id": 0})
+
+# ============ COUPONS ============
+@api_router.post("/coupons/validate")
+async def validate_coupon(payload: CouponCheck):
+    code = payload.code.strip().upper()
+    if code not in DEMO_COUPONS:
+        raise HTTPException(status_code=404, detail="Cupom inválido")
+    coupon = DEMO_COUPONS[code]
+    if payload.subtotal < coupon.get("min", 0):
+        raise HTTPException(status_code=400, detail=f"Pedido mínimo de R$ {coupon['min']:.2f}")
+    discount = 0.0
+    free_shipping = False
+    if coupon["type"] == "percent":
+        discount = round(payload.subtotal * (coupon["value"] / 100), 2)
+    elif coupon["type"] == "shipping":
+        free_shipping = True
+    return {"code": code, "discount": discount, "free_shipping": free_shipping, "description": coupon["desc"]}
+
+# ============ CEP LOOKUP (mock) ============
+@api_router.post("/shipping/cep")
+async def check_cep(payload: CEPCheck):
+    cep = "".join(c for c in payload.cep if c.isdigit())
+    if len(cep) != 8:
+        raise HTTPException(status_code=400, detail="CEP inválido")
+    # Mock address by CEP prefix
+    prefix = cep[:2]
+    regions = {
+        "01": {"cidade": "São Paulo", "estado": "SP", "bairro": "Centro", "endereco": "Rua Exemplo"},
+        "20": {"cidade": "Rio de Janeiro", "estado": "RJ", "bairro": "Centro", "endereco": "Rua Exemplo"},
+        "30": {"cidade": "Belo Horizonte", "estado": "MG", "bairro": "Centro", "endereco": "Rua Exemplo"},
+        "40": {"cidade": "Salvador", "estado": "BA", "bairro": "Centro", "endereco": "Rua Exemplo"},
+        "80": {"cidade": "Curitiba", "estado": "PR", "bairro": "Centro", "endereco": "Rua Exemplo"},
+        "90": {"cidade": "Porto Alegre", "estado": "RS", "bairro": "Centro", "endereco": "Rua Exemplo"},
+    }
+    addr = regions.get(prefix, {"cidade": "Cidade", "estado": "UF", "bairro": "Bairro", "endereco": "Rua"})
+    shipping_cost = 24.90 if prefix in {"01", "20", "30"} else 34.90
+    delivery_days = "3 a 7 dias úteis" if prefix in {"01", "20", "30"} else "5 a 12 dias úteis"
+    return {"cep": cep, **addr, "shipping_cost": shipping_cost, "delivery_estimate": delivery_days}
+
+# ============ NEWSLETTER ============
+@api_router.post("/newsletter")
+async def newsletter_subscribe(payload: NewsletterSignup):
+    doc = {
+        "id": str(uuid.uuid4()),
+        "email": payload.email,
+        "name": payload.name or "",
+        "created_at": now_iso(),
+    }
+    existing = await db.newsletter.find_one({"email": payload.email})
+    if not existing:
+        await db.newsletter.insert_one(doc)
+    # Send confirmation email if resend configured
+    sent = False
+    if resend and RESEND_API_KEY:
+        try:
+            html = f"""
+            <div style="font-family: Georgia, serif; background:#F9F8F6; padding: 32px; color:#2C2825;">
+              <div style="max-width: 560px; margin:0 auto; background:#FFFFFF; padding:40px; border-radius: 12px;">
+                <h1 style="font-size:28px; font-weight:400; margin:0 0 16px;">Auré Casa</h1>
+                <p style="font-size:16px; line-height:1.6;">Bem-vindo à nossa lista.</p>
+                <p style="font-size:15px; line-height:1.7; color:#5C5449;">
+                  Você receberá lançamentos, cores novas e coleções em primeira mão.
+                  Obrigado por se conectar à Auré.
+                </p>
+                <p style="font-size:13px; color:#8A7D72; margin-top: 32px;">Objetos para os detalhes que transformam a casa.</p>
+              </div>
+            </div>
+            """
+            await asyncio.to_thread(resend.Emails.send, {
+                "from": EMAIL_FROM,
+                "to": [payload.email],
+                "subject": "Bem-vindo à Auré Casa",
+                "html": html,
+            })
+            sent = True
+        except Exception as e:
+            logger.warning(f"Newsletter email failed: {e}")
+    return {"status": "ok", "email_sent": sent}
+
+# ============ CONTACT FORM ============
+@api_router.post("/contact")
+async def contact_form(payload: ContactMessage):
+    doc = {
+        "id": str(uuid.uuid4()),
+        **payload.model_dump(),
+        "created_at": now_iso(),
+    }
+    await db.contacts.insert_one(doc)
+    sent = False
+    if resend and RESEND_API_KEY and EMAIL_OWNER:
+        try:
+            html_admin = f"""
+            <div style="font-family: Arial, sans-serif; color:#2C2825;">
+              <h2>Novo contato — Auré Casa</h2>
+              <p><b>Nome:</b> {payload.name}</p>
+              <p><b>Email:</b> {payload.email}</p>
+              <p><b>Assunto:</b> {payload.subject}</p>
+              <p><b>Mensagem:</b><br>{payload.message}</p>
+            </div>
+            """
+            await asyncio.to_thread(resend.Emails.send, {
+                "from": EMAIL_FROM,
+                "to": [EMAIL_OWNER],
+                "subject": f"[Auré Casa] {payload.subject}",
+                "html": html_admin,
+            })
+            html_user = f"""
+            <div style="font-family: Georgia, serif; background:#F9F8F6; padding: 32px; color:#2C2825;">
+              <div style="max-width: 560px; margin:0 auto; background:#FFFFFF; padding:40px; border-radius: 12px;">
+                <h1 style="font-size:24px; font-weight:400;">Recebemos sua mensagem</h1>
+                <p>Olá {payload.name},</p>
+                <p>Obrigado por escrever à Auré Casa. Nossa equipe responderá em breve.</p>
+                <p style="color:#8A7D72; font-size:13px;">Auré Casa · Objetos para os detalhes que transformam a casa.</p>
+              </div>
+            </div>
+            """
+            await asyncio.to_thread(resend.Emails.send, {
+                "from": EMAIL_FROM,
+                "to": [payload.email],
+                "subject": "Recebemos sua mensagem — Auré Casa",
+                "html": html_user,
+            })
+            sent = True
+        except Exception as e:
+            logger.warning(f"Contact email failed: {e}")
+    return {"status": "ok", "email_sent": sent}
+
+# ============ ADMIN STATS ============
+@api_router.get("/admin/stats")
+async def admin_stats():
+    total_orders = await db.orders.count_documents({})
+    total_products = await db.products.count_documents({})
+    newsletter_count = await db.newsletter.count_documents({})
+    contacts_count = await db.contacts.count_documents({})
+    # Mock revenue chart (last 7 days)
+    import random
+    random.seed(42)
+    chart = []
+    for i in range(7):
+        chart.append({"day": f"Dia {i+1}", "revenue": random.randint(600, 2400)})
+    orders = await db.orders.find({}, {"_id": 0}).to_list(500)
+    total_revenue = sum(o.get("total", 0) for o in orders)
+    return {
+        "total_orders": total_orders,
+        "total_products": total_products,
+        "newsletter_count": newsletter_count,
+        "contacts_count": contacts_count,
+        "total_revenue": total_revenue,
+        "chart": chart,
+    }
+
+@api_router.get("/admin/products")
+async def admin_list_products():
+    return await db.products.find({}, {"_id": 0}).to_list(500)
+
+@api_router.patch("/admin/products/{product_id}")
+async def admin_update_product(product_id: str, patch: Dict[str, Any]):
+    patch.pop("_id", None)
+    r = await db.products.update_one({"id": product_id}, {"$set": patch})
+    if r.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Produto não encontrado")
+    return await db.products.find_one({"id": product_id}, {"_id": 0})
+
+@api_router.post("/admin/products")
+async def admin_create_product(product: Product):
+    doc = product.model_dump()
+    if await db.products.find_one({"id": doc["id"]}):
+        raise HTTPException(status_code=400, detail="ID duplicado")
+    await db.products.insert_one(doc)
+    return {k: v for k, v in doc.items() if k != "_id"}
+
+@api_router.delete("/admin/products/{product_id}")
+async def admin_delete_product(product_id: str):
+    r = await db.products.delete_one({"id": product_id})
+    if r.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Produto não encontrado")
+    return {"status": "ok"}
+
+@api_router.get("/admin/newsletter")
+async def admin_list_newsletter():
+    return await db.newsletter.find({}, {"_id": 0}).sort("created_at", -1).to_list(1000)
+
+@api_router.get("/admin/contacts")
+async def admin_list_contacts():
+    return await db.contacts.find({}, {"_id": 0}).sort("created_at", -1).to_list(1000)
+
 @api_router.get("/")
 async def root():
-    return {"message": "Hello World"}
+    return {"brand": "Auré Casa", "status": "ok"}
 
-@api_router.post("/status", response_model=StatusCheck)
-async def create_status_check(input: StatusCheckCreate):
-    status_dict = input.model_dump()
-    status_obj = StatusCheck(**status_dict)
-    
-    # Convert to dict and serialize datetime to ISO string for MongoDB
-    doc = status_obj.model_dump()
-    doc['timestamp'] = doc['timestamp'].isoformat()
-    
-    _ = await db.status_checks.insert_one(doc)
-    return status_obj
-
-@api_router.get("/status", response_model=List[StatusCheck])
-async def get_status_checks():
-    # Exclude MongoDB's _id field from the query results
-    status_checks = await db.status_checks.find({}, {"_id": 0}).to_list(1000)
-    
-    # Convert ISO string timestamps back to datetime objects
-    for check in status_checks:
-        if isinstance(check['timestamp'], str):
-            check['timestamp'] = datetime.fromisoformat(check['timestamp'])
-    
-    return status_checks
-
-# Include the router in the main app
 app.include_router(api_router)
 
 app.add_middleware(
@@ -77,12 +608,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+@app.on_event("startup")
+async def on_startup():
+    await seed_database()
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
