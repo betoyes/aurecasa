@@ -553,7 +553,7 @@ async def newsletter_subscribe(payload: NewsletterSignup):
     sent = False
     if resend and RESEND_API_KEY:
         try:
-            html = f"""
+            html = """
             <div style="font-family: Georgia, serif; background:#F9F8F6; padding: 32px; color:#2C2825;">
               <div style="max-width: 560px; margin:0 auto; background:#FFFFFF; padding:40px; border-radius: 12px;">
                 <h1 style="font-size:28px; font-weight:400; margin:0 0 16px;">Auré Casa</h1>
@@ -683,31 +683,6 @@ async def admin_list_newsletter(admin=Depends(require_admin)):
 @api_router.get("/admin/contacts")
 async def admin_list_contacts(admin=Depends(require_admin)):
     return await db.contacts.find({}, {"_id": 0}).sort("created_at", -1).to_list(1000)
-
-@api_router.get("/")
-async def root():
-    return {"brand": "Auré Casa", "status": "ok"}
-
-app.include_router(api_router)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
-
-@app.on_event("startup")
-async def on_startup():
-    await seed_database()
-
-@app.on_event("shutdown")
-async def shutdown_db_client():
-    client.close()
 
 @api_router.get("/")
 async def root():

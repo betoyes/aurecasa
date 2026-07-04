@@ -101,3 +101,137 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+user_problem_statement: "Auré Casa — e-commerce premium BR. Sessão atual: auditoria E2E real de todos os fluxos (admin auth, CRUD produtos com upload, catálogo, carrinho, checkout demo, pedidos/status/tracking, newsletter, contato, sessão inválida), corrigir apenas bugs encontrados sem alterar visual, e criar documentação."
+
+backend:
+  - task: "Admin login JWT (/api/admin/login, /api/admin/verify)"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Credenciais em /app/memory/test_credentials.md. Corrigido .env malformado (linha CORS_ORIGINS+EMERGENT_LLM_KEY coladas) e bloco duplicado no fim do server.py (router/CORS/startup 2x). Precisa testar login válido, inválido, token expirado/inválido."
+      - working: true
+        agent: "testing"
+        comment: "✅ PASS (5/5 tests): Login válido retorna token JWT correto. Login inválido retorna 401. Token válido verificado com sucesso. Sem token retorna 401. Token inválido/adulterado retorna 401. Autenticação admin funcionando perfeitamente."
+  - task: "Admin products CRUD + upload (/api/admin/products, /api/admin/upload)"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "POST/PATCH/DELETE produtos com Bearer token. Upload aceita jpg/png/webp, salva em static/uploads, retorna /api/static/uploads/<file>. Testar sem token (401), formato inválido (400), e servir arquivo estático."
+      - working: true
+        agent: "testing"
+        comment: "✅ PASS (8/8 tests): GET /api/admin/products retorna 8 produtos seed com token, 401 sem token. POST cria produto completo com todos campos do modelo Product. PATCH edita nome/preço/imagens (testado reordenação de imagens para mudar imagem principal). DELETE remove produto e verifica 404 após deleção. Upload PNG válido funciona e arquivo é servido corretamente em /api/static/uploads/. Upload com content-type inválido retorna 400. Upload sem token retorna 401. CRUD completo funcionando."
+  - task: "Catálogo público (/api/products, /api/products/{slug}, /api/categories)"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Seed de 8 produtos. Testar filtros (categoria, cor, preço, sort), slug inexistente (404)."
+      - working: true
+        agent: "testing"
+        comment: "✅ PASS (5/5 tests): GET /api/products retorna 8 produtos seed. Filtros funcionando: category (2 produtos em bancada-lavabo), sort=price_asc (ordenação correta), min_price/max_price (4 produtos entre R$100-150), color=Areia (5 produtos). GET /api/products/bandeja-ritual retorna produto correto. Slug inexistente retorna 404. GET /api/categories retorna 5 categorias. Catálogo público totalmente funcional."
+  - task: "Pedidos (/api/orders POST/GET, PATCH status+tracking admin)"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "POST público (checkout demo), PATCH requer admin (status, tracking_code). Email de status via Resend só se RESEND_API_KEY setada (vazia — não deve quebrar)."
+      - working: true
+        agent: "testing"
+        comment: "✅ PASS (7/7 tests): POST /api/orders cria pedido com order_number e id. GET /api/orders/{id} e /api/orders/{order_number} retornam pedido correto. PATCH com admin token atualiza status e tracking_code (testado 'Enviado' + 'BR123456789'). PATCH sem token retorna 401. PATCH com campo não permitido (total) retorna 400. PATCH com id inexistente retorna 404. RESEND_API_KEY vazia não quebra fluxo (email_sent: false). Sistema de pedidos completo e funcional."
+  - task: "Cupons e CEP (/api/coupons/validate, /api/shipping/cep)"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Cupons: BEMVINDO10, FRETEGRATIS (min R$200). CEP mock por prefixo."
+      - working: true
+        agent: "testing"
+        comment: "✅ PASS (6/6 tests): BEMVINDO10 valida corretamente (10% de R$200 = R$20 desconto). FRETEGRATIS válido com subtotal >= R$200 (free_shipping: true). FRETEGRATIS com subtotal < R$200 retorna 400 com mensagem de pedido mínimo. Cupom inexistente retorna 404. CEP 01310-100 retorna São Paulo/SP com frete R$24.90. CEP 99999-999 retorna dados mock com frete R$34.90. Sistema de cupons e CEP funcionando."
+  - task: "Newsletter e Contato (/api/newsletter, /api/contact)"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Salvam no Mongo; Resend opcional (chave vazia). Testar duplicidade de email na newsletter e validação de payload."
+      - working: true
+        agent: "testing"
+        comment: "✅ PASS (7/7 tests): POST /api/newsletter com email novo retorna status ok. Email duplicado tratado graciosamente (sem erro, retorna 200). Email inválido retorna 422 com validação Pydantic. POST /api/contact com payload válido retorna status ok. Payload inválido (campos faltando) retorna 422. GET /api/admin/newsletter retorna lista de inscritos (2 encontrados). GET /api/admin/contacts retorna lista de mensagens (1 encontrada). RESEND_API_KEY vazia não quebra (email_sent: false). Newsletter e contato funcionando."
+
+frontend:
+  - task: "Fluxo admin UI (login, produtos, upload, reordenação, imagem principal, pedidos, logout, sessão inválida)"
+    implemented: true
+    working: "NA"
+    file: "frontend/src/pages/AdminLogin.jsx, Admin.jsx, AdminProducts.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Aguardando auditoria E2E autorizada pelo usuário."
+  - task: "Fluxo loja (home, catálogo, produto, hover desktop, carrinho, checkout demo, confirmação, newsletter, contato)"
+    implemented: true
+    working: "NA"
+    file: "frontend/src/pages/*"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Aguardando auditoria E2E autorizada pelo usuário."
+
+metadata:
+  created_by: "main_agent"
+  version: "1.0"
+  test_sequence: 2
+  run_ui: true
+
+test_plan:
+  current_focus:
+    - "Admin login JWT (/api/admin/login, /api/admin/verify)"
+    - "Admin products CRUD + upload (/api/admin/products, /api/admin/upload)"
+    - "Catálogo público (/api/products, /api/products/{slug}, /api/categories)"
+    - "Pedidos (/api/orders POST/GET, PATCH status+tracking admin)"
+  stuck_tasks: []
+  test_all: true
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: "Auditoria E2E solicitada pelo usuário. Backend primeiro. Correções já feitas antes do teste: (1) .env linha 3 malformada corrigida, (2) bloco duplicado removido do fim de server.py. Credenciais admin em /app/memory/test_credentials.md. RESEND_API_KEY vazia — emails não devem quebrar fluxos."
+  - agent: "testing"
+    message: "✅ BACKEND E2E COMPLETO: Executados 38 testes cobrindo todos os fluxos solicitados. 100% de sucesso (38/38 passed, 0 failed). Todos os endpoints funcionando corretamente: (1) Admin auth com JWT, (2) CRUD produtos + upload de imagens, (3) Catálogo público com filtros, (4) Sistema de pedidos com atualização de status/tracking, (5) Cupons e CEP, (6) Newsletter e contato. Validações de erro (401, 400, 404, 422) funcionando. RESEND_API_KEY vazia não quebra fluxos (graceful degradation). Backend está production-ready. Arquivo de teste: /app/backend_test.py. Frontend aguardando autorização do usuário para teste."
+
