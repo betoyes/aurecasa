@@ -51,30 +51,55 @@ export default function ProductDetail() {
                 <div className="grid lg:grid-cols-2 gap-12 lg:gap-20">
                     {/* Gallery */}
                     <div>
-                        <div style={{ background: "var(--aure-bg-2)", borderRadius: 18, aspectRatio: "1", overflow: "hidden" }}>
-                            <img
-                                src={product.images?.[selectedImg]}
-                                alt={product.name}
-                                className="w-full h-full object-cover"
-                                data-testid="product-main-image"
-                            />
+                        {/* Desktop: single main image + thumbs */}
+                        <div className="hidden md:block">
+                            <div style={{ background: "var(--aure-bg-2)", borderRadius: 18, aspectRatio: "1", overflow: "hidden" }}>
+                                <img
+                                    src={product.images?.[selectedImg]}
+                                    alt={product.name}
+                                    className="w-full h-full object-cover"
+                                    data-testid="product-main-image"
+                                />
+                            </div>
+                            <div className="grid grid-cols-4 gap-3 mt-4">
+                                {product.images?.map((img, i) => (
+                                    <button
+                                        key={i}
+                                        onClick={() => setSelectedImg(i)}
+                                        className="overflow-hidden"
+                                        style={{
+                                            borderRadius: 10,
+                                            aspectRatio: "1",
+                                            outline: selectedImg === i ? "1px solid var(--aure-ink)" : "none",
+                                            outlineOffset: 2,
+                                        }}
+                                        data-testid={`product-thumb-${i}`}
+                                    >
+                                        <img src={img} alt="" className="w-full h-full object-cover" />
+                                    </button>
+                                ))}
+                            </div>
                         </div>
-                        <div className="grid grid-cols-4 gap-3 mt-4">
+                        {/* Mobile: horizontal swipe gallery, first two visible */}
+                        <div
+                            className="md:hidden -mx-6 px-6 flex gap-3 overflow-x-auto snap-x snap-mandatory pb-3"
+                            style={{ scrollSnapType: "x mandatory", WebkitOverflowScrolling: "touch" }}
+                            data-testid="product-mobile-gallery"
+                        >
                             {product.images?.map((img, i) => (
-                                <button
+                                <div
                                     key={i}
-                                    onClick={() => setSelectedImg(i)}
-                                    className="overflow-hidden"
+                                    className="flex-shrink-0 snap-start"
                                     style={{
-                                        borderRadius: 10,
+                                        width: "82%",
                                         aspectRatio: "1",
-                                        outline: selectedImg === i ? "1px solid var(--aure-ink)" : "none",
-                                        outlineOffset: 2,
+                                        background: "var(--aure-bg-2)",
+                                        borderRadius: 18,
+                                        overflow: "hidden",
                                     }}
-                                    data-testid={`product-thumb-${i}`}
                                 >
-                                    <img src={img} alt="" className="w-full h-full object-cover" />
-                                </button>
+                                    <img src={img} alt={`${product.name} ${i + 1}`} className="w-full h-full object-cover" />
+                                </div>
                             ))}
                         </div>
                     </div>

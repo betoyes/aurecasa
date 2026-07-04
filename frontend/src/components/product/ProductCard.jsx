@@ -12,7 +12,7 @@ export const ProductCard = ({ product, testIdPrefix = "product-card" }) => {
         <div className="group flex flex-col gap-4" data-testid={`${testIdPrefix}-${product.slug}`}>
             <Link
                 to={`/produto/${product.slug}`}
-                className="block relative overflow-hidden"
+                className="block relative overflow-hidden aure-card-media"
                 style={{
                     aspectRatio: "4 / 5",
                     background: "var(--aure-bg-2)",
@@ -22,12 +22,21 @@ export const ProductCard = ({ product, testIdPrefix = "product-card" }) => {
                 <img
                     src={product.images?.[0]}
                     alt={product.name}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out"
+                    className="aure-card-img aure-card-img--primary w-full h-full object-cover"
                     loading="lazy"
                 />
+                {product.images?.[1] && (
+                    <img
+                        src={product.images[1]}
+                        alt={`${product.name} · ambientado`}
+                        className="aure-card-img aure-card-img--hover w-full h-full object-cover"
+                        loading="lazy"
+                        aria-hidden="true"
+                    />
+                )}
                 {product.new && (
                     <span
-                        className="absolute top-4 left-4 ui-label px-3 py-1"
+                        className="absolute top-4 left-4 ui-label px-3 py-1 z-10"
                         style={{ background: "var(--aure-bg)", color: "var(--aure-ink)", borderRadius: 999 }}
                     >
                         Novidade
@@ -40,7 +49,7 @@ export const ProductCard = ({ product, testIdPrefix = "product-card" }) => {
                         e.preventDefault();
                         toggleWishlist(product);
                     }}
-                    className="absolute top-4 right-4 p-2 rounded-full transition"
+                    className="absolute top-4 right-4 p-2 rounded-full transition z-10"
                     style={{ background: "var(--aure-bg)" }}
                 >
                     <Heart

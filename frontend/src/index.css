@@ -203,6 +203,42 @@ h3,
     cursor: pointer;
     transition: transform 0.25s;
 }
+
+/* Product card hover image swap (desktop only) */
+.aure-card-media {
+    position: relative;
+    isolation: isolate;
+}
+.aure-card-img {
+    position: absolute;
+    inset: 0;
+    transition:
+        opacity 0.7s ease,
+        transform 1.2s ease;
+}
+.aure-card-img--primary {
+    opacity: 1;
+    z-index: 1;
+}
+.aure-card-img--hover {
+    opacity: 0;
+    z-index: 2;
+    transform: scale(1.02);
+}
+@media (hover: hover) and (pointer: fine) {
+    .aure-card-media:hover .aure-card-img--primary {
+        opacity: 0;
+    }
+    .aure-card-media:hover .aure-card-img--hover {
+        opacity: 1;
+        transform: scale(1.04);
+    }
+}
+@media (hover: none) {
+    .aure-card-img--hover {
+        display: none;
+    }
+}
 .color-swatch:hover {
     transform: scale(1.1);
 }
