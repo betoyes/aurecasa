@@ -11,7 +11,6 @@ import asyncio
 import jwt
 import re
 import secrets
-import shutil
 import time
 from pathlib import Path
 from pydantic import BaseModel, Field, EmailStr
@@ -45,6 +44,36 @@ CORS_ORIGINS = [o.strip() for o in os.environ.get('CORS_ORIGINS', 'http://localh
 UPLOAD_DIR = Path(__file__).parent / "static" / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024  # 5 MB
+
+# URL pública do próprio backend — usada para montar URLs absolutas de uploads
+# locais (URLs relativas quebram com frontend hospedado em outro domínio).
+BACKEND_PUBLIC_URL = os.environ.get("BACKEND_PUBLIC_URL", "http://localhost:8001").rstrip("/")
+
+# Cloudflare R2 (S3-compatível) para uploads persistentes. Se as 5 variáveis
+# estiverem definidas, uploads vão para o bucket; senão, disco local.
+R2_ACCOUNT_ID = os.environ.get("R2_ACCOUNT_ID", "")
+R2_ACCESS_KEY_ID = os.environ.get("R2_ACCESS_KEY_ID", "")
+R2_SECRET_ACCESS_KEY = os.environ.get("R2_SECRET_ACCESS_KEY", "")
+R2_BUCKET = os.environ.get("R2_BUCKET", "")
+R2_PUBLIC_URL = os.environ.get("R2_PUBLIC_URL", "").rstrip("/")
+
+_r2_client = None
+
+def _r2_enabled() -> bool:
+    return bool(R2_ACCOUNT_ID and R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY and R2_BUCKET and R2_PUBLIC_URL)
+
+def _get_r2_client():
+    global _r2_client
+    if _r2_client is None:
+        import boto3
+        _r2_client = boto3.client(
+            "s3",
+            endpoint_url=f"https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com",
+            aws_access_key_id=R2_ACCESS_KEY_ID,
+            aws_secret_access_key=R2_SECRET_ACCESS_KEY,
+            region_name="auto",
+        )
+    return _r2_client
 
 try:
     import resend
@@ -524,17 +553,20 @@ async def admin_upload(file: UploadFile = File(...), admin=Depends(require_admin
         raise HTTPException(status_code=400, detail="Formato inválido. Use JPG, PNG ou WebP.")
     ext = {"image/jpeg": ".jpg", "image/jpg": ".jpg", "image/png": ".png", "image/webp": ".webp"}[file.content_type]
     fname = f"{uuid.uuid4().hex}{ext}"
-    dest = UPLOAD_DIR / fname
-    size = 0
-    with dest.open("wb") as out:
-        while chunk := await file.read(1024 * 1024):
-            size += len(chunk)
-            if size > MAX_UPLOAD_BYTES:
-                out.close()
-                dest.unlink(missing_ok=True)
-                raise HTTPException(status_code=413, detail="Arquivo muito grande. Máximo de 5 MB.")
-            out.write(chunk)
-    return {"url": f"/api/static/uploads/{fname}", "filename": fname}
+    data = bytearray()
+    while chunk := await file.read(1024 * 1024):
+        data.extend(chunk)
+        if len(data) > MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=413, detail="Arquivo muito grande. Máximo de 5 MB.")
+    if _r2_enabled():
+        await asyncio.to_thread(
+            _get_r2_client().put_object,
+            Bucket=R2_BUCKET, Key=f"uploads/{fname}",
+            Body=bytes(data), ContentType=file.content_type,
+        )
+        return {"url": f"{R2_PUBLIC_URL}/uploads/{fname}", "filename": fname}
+    (UPLOAD_DIR / fname).write_bytes(data)
+    return {"url": f"{BACKEND_PUBLIC_URL}/api/static/uploads/{fname}", "filename": fname}
 
 async def _send_order_status_email(order: Dict[str, Any]):
     if not (resend and RESEND_API_KEY):

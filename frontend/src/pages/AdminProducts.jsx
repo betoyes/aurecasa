@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { X, Upload, Star, Plus, Trash2, Link2 } from "lucide-react";
 import { brl } from "@/lib/utils-brl";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "http://localhost:8001";
 const absUrl = (u) => (u?.startsWith("http") ? u : `${BACKEND_URL}${u}`);
 
 const CATEGORIES = [

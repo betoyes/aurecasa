@@ -149,9 +149,32 @@ class TestAdminStatsUpload:
         assert resp.status_code == 413
         assert list(tmp_path.iterdir()) == []  # arquivo parcial removido
 
-    def test_upload_aceita_png(self, client, auth_headers, tmp_path, monkeypatch):
+    def test_upload_local_retorna_url_absoluta(self, client, auth_headers, tmp_path, monkeypatch):
+        # URL relativa quebra quando frontend e backend estão em domínios separados
         monkeypatch.setattr(server, "UPLOAD_DIR", tmp_path)
         resp = client.post("/api/admin/upload", headers=auth_headers,
                            files={"file": ("foto.png", io.BytesIO(b"\x89PNG fake"), "image/png")})
         assert resp.status_code == 200
-        assert resp.json()["url"].startswith("/api/static/uploads/")
+        assert resp.json()["url"].startswith("http://localhost:8001/api/static/uploads/")
+        assert len(list(tmp_path.iterdir())) == 1
+
+    def test_upload_vai_para_r2_quando_configurado(self, client, auth_headers, monkeypatch):
+        calls = {}
+
+        class FakeR2:
+            def put_object(self, **kwargs):
+                calls.update(kwargs)
+
+        monkeypatch.setattr(server, "R2_ACCOUNT_ID", "conta")
+        monkeypatch.setattr(server, "R2_ACCESS_KEY_ID", "chave")
+        monkeypatch.setattr(server, "R2_SECRET_ACCESS_KEY", "segredo")
+        monkeypatch.setattr(server, "R2_BUCKET", "bucket-teste")
+        monkeypatch.setattr(server, "R2_PUBLIC_URL", "https://cdn.exemplo.com")
+        monkeypatch.setattr(server, "_get_r2_client", lambda: FakeR2())
+
+        resp = client.post("/api/admin/upload", headers=auth_headers,
+                           files={"file": ("foto.png", io.BytesIO(b"\x89PNG fake"), "image/png")})
+        assert resp.status_code == 200
+        assert resp.json()["url"].startswith("https://cdn.exemplo.com/uploads/")
+        assert calls["Bucket"] == "bucket-teste"
+        assert calls["ContentType"] == "image/png"
