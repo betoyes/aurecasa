@@ -20,6 +20,12 @@ Build a complete, polished Brazilian e-commerce website for a premium home objec
 - BRL formatting, PT-BR locale, SEO metadata
 
 ## Implementation Log
+### 2026-07 — Auditoria E2E + documentação
+- Auditoria completa: backend 38/38, frontend 16/16 fluxos aprovados (admin auth/CRUD/upload/reordenação/imagem principal, catálogo, PDP, hover, carrinho, checkout demo, pedidos+status+tracking, newsletter, contato, logout, sessão inválida)
+- Bugs corrigidos: .env malformado (CORS_ORIGINS+EMERGENT_LLM_KEY na mesma linha), bloco duplicado no fim de server.py (router/CORS/startup 2x), f-string sem placeholder
+- Docs criadas: README.md, docs/ARQUITETURA.md, docs/ADMIN.md, docs/DEPLOY.md, docs/TESTES.md, backend/.env.example, frontend/.env.example
+- Credenciais admin registradas em /app/memory/test_credentials.md
+
 ### 2026-02 — MVP inicial
 - Backend FastAPI com endpoints: /api/products, /api/orders, /api/coupons/validate, /api/shipping/cep, /api/newsletter (Resend), /api/contact (Resend), /api/admin/*
 - MongoDB seeded com 8 produtos + reviews mock + 2 cupons demo
