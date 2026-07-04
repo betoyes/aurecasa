@@ -25,6 +25,8 @@ body {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     font-weight: 300;
+    font-size: 17px;
+    line-height: 1.65;
 }
 
 .font-serif,
@@ -45,7 +47,7 @@ h3,
     font-family: "Outfit", sans-serif;
     text-transform: uppercase;
     letter-spacing: 0.2em;
-    font-size: 11px;
+    font-size: 13px;
     font-weight: 500;
     color: var(--aure-muted);
 }
@@ -143,7 +145,7 @@ h3,
     background: transparent;
     color: var(--aure-ink);
     border-radius: 8px;
-    font-size: 14px;
+    font-size: 15px;
     font-family: "Outfit", sans-serif;
     outline: none;
     transition: border-color 0.25s;

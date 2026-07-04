@@ -53,7 +53,7 @@ export const ProductCard = ({ product, testIdPrefix = "product-card" }) => {
             <div className="flex flex-col gap-1">
                 <Link
                     to={`/produto/${product.slug}`}
-                    className="font-serif text-lg leading-tight hover:text-[color:var(--aure-terracota)] transition-colors"
+                    className="font-serif text-xl leading-tight hover:text-[color:var(--aure-terracota)] transition-colors"
                 >
                     {product.name}
                 </Link>
@@ -61,15 +61,15 @@ export const ProductCard = ({ product, testIdPrefix = "product-card" }) => {
                     <span className="text-sm" style={{ color: "var(--aure-muted)" }}>
                         {product.category}
                     </span>
-                    <span className="text-sm font-medium">{brl(product.price)}</span>
+                    <span className="text-base font-medium">{brl(product.price)}</span>
                 </div>
                 {product.colors?.length > 0 && (
-                    <div className="flex gap-1.5 mt-2">
+                    <div className="flex gap-2 mt-2">
                         {product.colors.slice(0, 4).map((c) => (
                             <span
                                 key={c}
                                 title={c}
-                                className="w-3 h-3 rounded-full"
+                                className="w-4 h-4 rounded-full"
                                 style={{
                                     background: colorToHex(c),
                                     border: "1px solid var(--aure-border-dark)",
