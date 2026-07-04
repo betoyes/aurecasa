@@ -17,7 +17,7 @@ adminApi.interceptors.response.use(
     (err) => {
         if (err?.response?.status === 401 && !_redirecting) {
             _redirecting = true;
-            try { localStorage.removeItem(TOKEN_KEY); } catch (_) {}
+            try { localStorage.removeItem(TOKEN_KEY); } catch { /* storage indisponível — o redirect abaixo cobre o caso */ }
             import("sonner").then(({ toast }) => toast("Sua sessão expirou. Entre novamente."));
             const path = window.location.pathname;
             if (path.startsWith("/admin") && path !== "/admin/login") {

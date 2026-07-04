@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { adminUpdateOrder, adminVerify, clearToken, getToken, adminGetStats, adminGetProducts, adminGetOrders, adminGetNewsletter, adminGetContacts } from "@/lib/adminApi";
 import { brl } from "@/lib/utils-brl";
 import { toast } from "sonner";
@@ -9,6 +9,12 @@ import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip } from "rec
 
 const ORDER_STATUSES = ["Pedido recebido", "Em produção", "Enviado", "Entregue"];
 const TABS = ["Dashboard", "Pedidos", "Produtos", "Newsletter", "Contatos", "Configurações"];
+
+// Estilos estáveis do gráfico (evita recriar objetos a cada render)
+const CHART_TICK = { fill: "#8A7D72", fontSize: 12 };
+const CHART_AXIS_LINE = { stroke: "#E6E4E0" };
+const CHART_TOOLTIP = { background: "#F9F8F6", border: "1px solid #E6E4E0", borderRadius: 8 };
+const CHART_DOT = { fill: "#C88E77", r: 4 };
 
 export default function Admin() {
     const [tab, setTab] = useState("Dashboard");
@@ -26,14 +32,17 @@ export default function Admin() {
         adminVerify().then(() => setAuthed(true)).catch(() => { clearToken(); navigate("/admin/login"); });
     }, [navigate]);
 
-    const load = async () => {
+    const load = useCallback(async () => {
         try {
             const [s, o, p, n, c] = await Promise.all([adminGetStats(), adminGetOrders(), adminGetProducts(), adminGetNewsletter(), adminGetContacts()]);
             setStats(s); setOrders(o); setProducts(p); setNewsletter(n); setContacts(c);
-        } catch (e) { /* 401 handled by interceptor */ }
-    };
+        } catch (e) {
+            // 401 é tratado pelo interceptor (redirect); loga apenas outros erros
+            if (e?.response?.status !== 401) console.error("Falha ao carregar dados do admin:", e);
+        }
+    }, []);
 
-    useEffect(() => { if (authed) load(); }, [authed]);
+    useEffect(() => { if (authed) load(); }, [authed, load]);
 
     const changeStatus = async (id, status) => {
         try { await adminUpdateOrder(id, { status }); toast.success("Status atualizado (e-mail enviado se Resend configurado)"); load(); }
@@ -101,10 +110,10 @@ export default function Admin() {
                             <div style={{ height: 260 }}>
                                 <ResponsiveContainer width="100%" height="100%">
                                     <LineChart data={stats.chart}>
-                                        <XAxis dataKey="day" tick={{ fill: "#8A7D72", fontSize: 12 }} axisLine={{ stroke: "#E6E4E0" }} />
-                                        <YAxis tick={{ fill: "#8A7D72", fontSize: 12 }} axisLine={{ stroke: "#E6E4E0" }} />
-                                        <Tooltip contentStyle={{ background: "#F9F8F6", border: "1px solid #E6E4E0", borderRadius: 8 }} />
-                                        <Line type="monotone" dataKey="revenue" stroke="#9CA896" strokeWidth={2} dot={{ fill: "#C88E77", r: 4 }} />
+                                        <XAxis dataKey="day" tick={CHART_TICK} axisLine={CHART_AXIS_LINE} />
+                                        <YAxis tick={CHART_TICK} axisLine={CHART_AXIS_LINE} />
+                                        <Tooltip contentStyle={CHART_TOOLTIP} />
+                                        <Line type="monotone" dataKey="revenue" stroke="#9CA896" strokeWidth={2} dot={CHART_DOT} />
                                     </LineChart>
                                 </ResponsiveContainer>
                             </div>
@@ -137,7 +146,7 @@ export default function Admin() {
                                     </div>
                                 </div>
                                 <ul className="text-sm mb-3">
-                                    {o.items.map((it, i) => <li key={i}>{it.quantity}× {it.name} {it.color && `· ${it.color}`} — {brl(it.price * it.quantity)}</li>)}
+                                    {o.items.map((it) => <li key={`${it.product_id || it.name}::${it.color || ""}::${it.variant || ""}`}>{it.quantity}× {it.name} {it.color && `· ${it.color}`} — {brl(it.price * it.quantity)}</li>)}
                                 </ul>
                                 <div className="flex gap-3 flex-wrap items-center">
                                     <select className="aure-input" style={{ maxWidth: 200 }} value={o.status} onChange={(e) => changeStatus(o.id, e.target.value)} data-testid={`admin-status-${o.order_number}`}>

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { adminUpload, adminCreateProduct, adminUpdateProductFull, adminDeleteProduct, adminGetProducts } from "@/lib/adminApi";
 import { toast } from "sonner";
 import { X, Upload, Star, Plus, Trash2, Link2 } from "lucide-react";
@@ -32,8 +32,11 @@ export default function AdminProducts() {
     const [editing, setEditing] = useState(null);
     const [imgUrl, setImgUrl] = useState("");
 
-    const load = () => adminGetProducts().then(setProducts).catch(() => {});
-    useEffect(() => { load(); }, []);
+    const load = useCallback(() => adminGetProducts().then(setProducts).catch((e) => {
+        // 401 é tratado pelo interceptor (redirect); loga apenas outros erros
+        if (e?.response?.status !== 401) console.error("Falha ao carregar produtos:", e);
+    }), []);
+    useEffect(() => { load(); }, [load]);
 
     const openNew = () => setEditing(empty());
     const openEdit = (p) => setEditing({ ...empty(), ...p });
@@ -165,7 +168,7 @@ export default function AdminProducts() {
                                 <div className="ui-label">Imagens · a primeira é a principal</div>
                                 <div className="space-y-2 max-h-72 overflow-y-auto">
                                     {editing.images.map((img, i) => (
-                                        <div key={i} className="flex gap-2 items-center p-2" style={{ background: "var(--aure-bg-2)", borderRadius: 8 }}>
+                                        <div key={`${img}-${i}`} className="flex gap-2 items-center p-2" style={{ background: "var(--aure-bg-2)", borderRadius: 8 }}>
                                             <img src={absUrl(img)} alt="" className="w-12 h-12 object-cover rounded" />
                                             <div className="flex-1 text-xs truncate">{i === 0 && <Star size={10} fill="currentColor" className="inline mr-1" style={{ color: "var(--aure-terracota)" }} />}{img.split("/").pop()}</div>
                                             <button onClick={() => setMain(i)} title="Principal" className="text-xs"><Star size={12} /></button>

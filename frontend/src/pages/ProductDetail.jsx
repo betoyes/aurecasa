@@ -259,7 +259,7 @@ export default function ProductDetail() {
                         <h2 className="font-serif text-3xl mb-8" style={{ fontWeight: 400 }}>Avaliações</h2>
                         <div className="grid md:grid-cols-2 gap-6">
                             {product.reviews.map((r, i) => (
-                                <div key={i} className="p-6" style={{ background: "var(--aure-bg-2)", borderRadius: 14 }} data-testid={`review-${i}`}>
+                                <div key={`${r.author}-${r.date}`} className="p-6" style={{ background: "var(--aure-bg-2)", borderRadius: 14 }} data-testid={`review-${i}`}>
                                     <div className="flex" style={{ color: "var(--aure-terracota)" }}>
                                         {Array.from({ length: r.rating }).map((_, k) => <Star key={k} size={13} fill="currentColor" strokeWidth={0} />)}
                                     </div>

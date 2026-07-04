@@ -91,7 +91,7 @@ export const Search = () => {
     return (
         <div className="pt-28 container-aure fade-in">
             <div className="ui-label mb-2">Busca</div>
-            <h1 className="font-serif text-4xl mb-6" style={{ fontWeight: 400 }}>Resultados para "{params.get("q")}"</h1>
+            <h1 className="font-serif text-4xl mb-6" style={{ fontWeight: 400 }}>Resultados para “{params.get("q")}”</h1>
             <p style={{ color: "var(--aure-muted)" }}>Use os filtros nas coleções para refinar sua busca.</p>
         </div>
     );

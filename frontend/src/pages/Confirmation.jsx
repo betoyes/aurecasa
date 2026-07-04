@@ -61,8 +61,8 @@ export default function Confirmation() {
 
                     <div className="ui-label mb-4">Itens</div>
                     <ul className="space-y-3 mb-6">
-                        {order.items.map((it, i) => (
-                            <li key={i} className="flex justify-between text-sm">
+                        {order.items.map((it) => (
+                            <li key={`${it.product_id || it.name}::${it.color || ""}::${it.variant || ""}`} className="flex justify-between text-sm">
                                 <span>{it.quantity}× {it.name} {it.color && <span style={{ color: "var(--aure-muted)" }}>· {it.color}</span>}</span>
                                 <span>{brl(it.price * it.quantity)}</span>
                             </li>

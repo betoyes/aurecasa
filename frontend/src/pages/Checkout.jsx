@@ -214,8 +214,8 @@ export default function Checkout() {
                     <aside style={{ background: "var(--aure-bg-2)", borderRadius: 18, padding: 24, height: "fit-content" }}>
                         <h3 className="font-serif text-xl mb-4" style={{ fontWeight: 400 }}>Seu pedido</h3>
                         <ul className="space-y-3 mb-4 text-sm">
-                            {cart.map((l, i) => (
-                                <li key={i} className="flex justify-between gap-4">
+                            {cart.map((l) => (
+                                <li key={`${l.product_id}::${l.color || ""}::${l.variant || ""}`} className="flex justify-between gap-4">
                                     <span>{l.quantity}× {l.name} {l.color && <span style={{ color: "var(--aure-muted)" }}>· {l.color}</span>}</span>
                                     <span>{brl(l.price * l.quantity)}</span>
                                 </li>

@@ -20,6 +20,11 @@ Build a complete, polished Brazilian e-commerce website for a premium home objec
 - BRL formatting, PT-BR locale, SEO metadata
 
 ## Implementation Log
+### 2026-07 — Revisão de código aplicada
+- Corrigidos: catches vazios (Admin.jsx, AdminProducts.jsx, adminApi.js — agora logam erros não-401), load em useCallback + deps corretas, keys de listas com identidade estável (Cart, Checkout, Confirmation, Admin pedidos, AdminProducts imagens, ProductDetail reviews), estilos do chart hoisted para constantes de módulo, aspas tipográficas em StaticPages. Lint 100% limpo. Smoke test pós-fix: dashboard+chart, pedidos, produtos, reviews, carrinho — OK.
+- Falsos positivos do relatório NÃO aplicados: `is not None` (correto), random do gráfico demo (intencional/mock), deps de funções de módulo (referência estável), console.warn do craco (infra da plataforma).
+- Diferidos (aguardando decisão do usuário): token admin em cookie httpOnly (refactor arquitetural), split de componentes grandes, TypeScript.
+
 ### 2026-07 — Auditoria E2E + documentação
 - Auditoria completa: backend 38/38, frontend 16/16 fluxos aprovados (admin auth/CRUD/upload/reordenação/imagem principal, catálogo, PDP, hover, carrinho, checkout demo, pedidos+status+tracking, newsletter, contato, logout, sessão inválida)
 - Bugs corrigidos: .env malformado (CORS_ORIGINS+EMERGENT_LLM_KEY na mesma linha), bloco duplicado no fim de server.py (router/CORS/startup 2x), f-string sem placeholder

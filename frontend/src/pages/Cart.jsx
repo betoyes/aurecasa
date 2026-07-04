@@ -58,7 +58,7 @@ export default function Cart() {
                     <div>
                         <ul className="space-y-6">
                             {cart.map((line, i) => (
-                                <li key={i} className="flex gap-6 pb-6" style={{ borderBottom: "1px solid var(--aure-border)" }} data-testid={`cart-line-${i}`}>
+                                <li key={`${line.product_id}::${line.color || ""}::${line.variant || ""}`} className="flex gap-6 pb-6" style={{ borderBottom: "1px solid var(--aure-border)" }} data-testid={`cart-line-${i}`}>
                                     <img src={line.image} alt={line.name} className="w-28 h-32 object-cover" style={{ borderRadius: 10 }} />
                                     <div className="flex-1 flex flex-col">
                                         <div className="flex justify-between">
