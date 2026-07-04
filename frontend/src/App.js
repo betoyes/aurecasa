@@ -15,6 +15,7 @@ import Confirmation from "@/pages/Confirmation";
 import Wishlist from "@/pages/Wishlist";
 import Account from "@/pages/Account";
 import Admin from "@/pages/Admin";
+import AdminLogin from "@/pages/AdminLogin";
 import { About, Contact, Legal, Search } from "@/pages/StaticPages";
 
 const ScrollTop = () => {
@@ -61,6 +62,7 @@ function App() {
                             <Route path="/favoritos" element={<Wishlist />} />
                             <Route path="/conta" element={<Account />} />
                             <Route path="/admin" element={<Admin />} />
+                            <Route path="/admin/login" element={<AdminLogin />} />
                             <Route path="/sobre" element={<About />} />
                             <Route path="/contato" element={<Contact />} />
                             <Route path="/privacidade" element={<LegalRoute />} />

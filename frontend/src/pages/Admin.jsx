@@ -1,7 +1,11 @@
 import React, { useEffect, useState } from "react";
-import { adminStats, adminProducts, adminUpdateProduct, listOrders, updateOrder, adminNewsletter, adminContacts } from "@/lib/api";
+import { adminStats, adminProducts, listOrders, adminNewsletter, adminContacts } from "@/lib/api";
+import { adminUpdateOrder, adminVerify, clearToken, getToken } from "@/lib/adminApi";
 import { brl } from "@/lib/utils-brl";
 import { toast } from "sonner";
+import { useNavigate } from "react-router-dom";
+import { LogOut } from "lucide-react";
+import AdminProducts from "@/pages/AdminProducts";
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip } from "recharts";
 
 const ORDER_STATUSES = ["Pedido recebido", "Em produção", "Enviado", "Entregue"];
@@ -14,33 +18,37 @@ export default function Admin() {
     const [products, setProducts] = useState([]);
     const [newsletter, setNewsletter] = useState([]);
     const [contacts, setContacts] = useState([]);
+    const [tracking, setTracking] = useState({});
+    const [authed, setAuthed] = useState(false);
+    const navigate = useNavigate();
+
+    useEffect(() => {
+        if (!getToken()) { navigate("/admin/login"); return; }
+        adminVerify().then(() => setAuthed(true)).catch(() => { clearToken(); navigate("/admin/login"); });
+    }, [navigate]);
 
     const load = async () => {
         try {
             const [s, o, p, n, c] = await Promise.all([adminStats(), listOrders(), adminProducts(), adminNewsletter(), adminContacts()]);
             setStats(s); setOrders(o); setProducts(p); setNewsletter(n); setContacts(c);
-        } catch (e) {
-            console.error(e);
-        }
+        } catch (e) { console.error(e); }
     };
 
-    useEffect(() => { load(); }, []);
+    useEffect(() => { if (authed) load(); }, [authed]);
 
     const changeStatus = async (id, status) => {
-        try {
-            await updateOrder(id, { status });
-            toast.success("Status atualizado");
-            load();
-        } catch { toast.error("Erro"); }
+        try { await adminUpdateOrder(id, { status }); toast.success("Status atualizado (e-mail enviado se Resend configurado)"); load(); }
+        catch { toast.error("Erro"); }
     };
 
-    const updateProductPrice = async (id, price) => {
-        try {
-            await adminUpdateProduct(id, { price: Number(price) });
-            toast.success("Preço atualizado");
-            load();
-        } catch { toast.error("Erro"); }
+    const saveTracking = async (id) => {
+        try { await adminUpdateOrder(id, { tracking_code: tracking[id] || "" }); toast.success("Rastreio salvo"); load(); }
+        catch { toast.error("Erro"); }
     };
+
+    const logout = () => { clearToken(); navigate("/admin/login"); };
+
+    if (!authed) return <div className="pt-40 text-center" style={{ color: "var(--aure-muted)" }}>Verificando…</div>;
 
     return (
         <div className="pt-28 pb-24 fade-in" data-testid="admin-page" style={{ background: "var(--aure-bg)" }}>
@@ -50,6 +58,7 @@ export default function Admin() {
                         <div className="ui-label mb-2">Painel · Auré Casa</div>
                         <h1 className="font-serif text-5xl" style={{ fontWeight: 400 }}>Admin</h1>
                     </div>
+                    <button onClick={logout} className="aure-btn-ghost flex items-center gap-2" data-testid="admin-logout"><LogOut size={14} /> Sair</button>
                 </div>
 
                 <div className="flex gap-6 mb-10 overflow-x-auto" style={{ borderBottom: "1px solid var(--aure-border)" }}>
@@ -99,57 +108,46 @@ export default function Admin() {
                 )}
 
                 {tab === "Pedidos" && (
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                            <thead>
-                                <tr style={{ borderBottom: "1px solid var(--aure-border)" }}>
-                                    {["Pedido", "Cliente", "Total", "Método", "Status", "Ação"].map((h) => (
-                                        <th key={h} className="text-left py-3 ui-label">{h}</th>
-                                    ))}
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {orders.map((o) => (
-                                    <tr key={o.id} style={{ borderBottom: "1px solid var(--aure-border)" }} data-testid={`admin-order-${o.order_number}`}>
-                                        <td className="py-3">{o.order_number}</td>
-                                        <td>{o.customer.nome}</td>
-                                        <td>{brl(o.total)}</td>
-                                        <td>{o.payment_method}</td>
-                                        <td>{o.status}</td>
-                                        <td>
-                                            <select className="aure-input" value={o.status} onChange={(e) => changeStatus(o.id, e.target.value)}>
-                                                {ORDER_STATUSES.map((s) => <option key={s}>{s}</option>)}
-                                            </select>
-                                        </td>
-                                    </tr>
-                                ))}
-                                {orders.length === 0 && <tr><td colSpan={6} className="py-8 text-center" style={{ color: "var(--aure-muted)" }}>Nenhum pedido ainda</td></tr>}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
-
-                {tab === "Produtos" && (
-                    <div className="grid md:grid-cols-2 gap-6">
-                        {products.map((p) => (
-                            <div key={p.id} className="p-4 flex gap-4" style={{ background: "var(--aure-bg-2)", borderRadius: 14 }} data-testid={`admin-product-${p.slug}`}>
-                                <img src={p.images?.[0]} alt="" className="w-24 h-28 object-cover" style={{ borderRadius: 8 }} />
-                                <div className="flex-1">
-                                    <div className="font-serif text-xl">{p.name}</div>
-                                    <div className="text-xs mb-2" style={{ color: "var(--aure-muted)" }}>{p.category}</div>
-                                    <label className="ui-label">Preço</label>
-                                    <input
-                                        type="number"
-                                        defaultValue={p.price}
-                                        className="aure-input mt-1"
-                                        onBlur={(e) => updateProductPrice(p.id, e.target.value)}
-                                        data-testid={`admin-product-price-${p.slug}`}
-                                    />
+                    <div className="space-y-4">
+                        {orders.map((o) => (
+                            <div key={o.id} className="p-5" style={{ background: "var(--aure-bg-2)", borderRadius: 14 }} data-testid={`admin-order-${o.order_number}`}>
+                                <div className="flex justify-between items-start mb-3 flex-wrap gap-2">
+                                    <div>
+                                        <div className="font-serif text-xl">{o.order_number}</div>
+                                        <div className="text-xs" style={{ color: "var(--aure-muted)" }}>{new Date(o.created_at).toLocaleString("pt-BR")} · {o.payment_method}</div>
+                                    </div>
+                                    <div className="text-right">
+                                        <div className="font-serif text-2xl">{brl(o.total)}</div>
+                                        <div className="text-xs" style={{ color: "var(--aure-muted)" }}>{o.status}</div>
+                                    </div>
+                                </div>
+                                <div className="grid md:grid-cols-2 gap-4 text-sm mb-3">
+                                    <div>
+                                        <div className="ui-label mb-1">Cliente</div>
+                                        <div>{o.customer.nome} · {o.customer.email} · {o.customer.celular}</div>
+                                    </div>
+                                    <div>
+                                        <div className="ui-label mb-1">Endereço</div>
+                                        <div style={{ color: "var(--aure-muted)" }}>{o.address.endereco}, {o.address.numero} · {o.address.bairro} · {o.address.cidade}/{o.address.estado} · CEP {o.address.cep}</div>
+                                    </div>
+                                </div>
+                                <ul className="text-sm mb-3">
+                                    {o.items.map((it, i) => <li key={i}>{it.quantity}× {it.name} {it.color && `· ${it.color}`} — {brl(it.price * it.quantity)}</li>)}
+                                </ul>
+                                <div className="flex gap-3 flex-wrap items-center">
+                                    <select className="aure-input" style={{ maxWidth: 200 }} value={o.status} onChange={(e) => changeStatus(o.id, e.target.value)} data-testid={`admin-status-${o.order_number}`}>
+                                        {ORDER_STATUSES.map((s) => <option key={s}>{s}</option>)}
+                                    </select>
+                                    <input className="aure-input" style={{ maxWidth: 220 }} placeholder="Código de rastreio" defaultValue={o.tracking_code || ""} onChange={(e) => setTracking({ ...tracking, [o.id]: e.target.value })} data-testid={`admin-tracking-${o.order_number}`} />
+                                    <button onClick={() => saveTracking(o.id)} className="aure-btn-secondary" style={{ padding: "10px 16px" }}>Salvar rastreio</button>
                                 </div>
                             </div>
                         ))}
+                        {orders.length === 0 && <p style={{ color: "var(--aure-muted)" }}>Nenhum pedido ainda.</p>}
                     </div>
                 )}
+
+                {tab === "Produtos" && <AdminProducts />}
 
                 {tab === "Newsletter" && (
                     <div>

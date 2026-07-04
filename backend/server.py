@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Query
+from fastapi import FastAPI, APIRouter, HTTPException, Query, Depends, UploadFile, File, Header
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -6,11 +6,13 @@ from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 import asyncio
+import jwt
+import shutil
 from pathlib import Path
 from pydantic import BaseModel, Field, EmailStr
 from typing import List, Optional, Dict, Any
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -22,6 +24,12 @@ db = client[os.environ['DB_NAME']]
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
 EMAIL_FROM = os.environ.get("EMAIL_FROM", "onboarding@resend.dev")
 EMAIL_OWNER = os.environ.get("EMAIL_OWNER", "")
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@aurecasa.com.br")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
+JWT_SECRET = os.environ.get("JWT_SECRET", "dev-secret-change-me")
+JWT_ALG = "HS256"
+UPLOAD_DIR = Path(__file__).parent / "static" / "uploads"
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 try:
     import resend
@@ -387,6 +395,81 @@ async def create_order(order_in: OrderCreate):
     await db.orders.insert_one(doc)
     return {k: v for k, v in doc.items() if k != "_id"}
 
+
+# ============ ADMIN AUTH + UPLOAD ============
+def require_admin(authorization: Optional[str] = Header(None)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Não autenticado")
+    token = authorization.split(" ", 1)[1]
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALG])
+        if payload.get("email") != ADMIN_EMAIL:
+            raise HTTPException(status_code=403, detail="Sem permissão")
+        return payload
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Sessão expirada")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Token inválido")
+
+class AdminLogin(BaseModel):
+    email: EmailStr
+    password: str
+
+@api_router.post("/admin/login")
+async def admin_login(payload: AdminLogin):
+    if not ADMIN_PASSWORD:
+        raise HTTPException(status_code=503, detail="Admin não configurado")
+    if payload.email != ADMIN_EMAIL or payload.password != ADMIN_PASSWORD:
+        raise HTTPException(status_code=401, detail="Credenciais inválidas")
+    token = jwt.encode(
+        {"email": payload.email, "exp": datetime.now(timezone.utc) + timedelta(days=7)},
+        JWT_SECRET, algorithm=JWT_ALG,
+    )
+    return {"token": token, "email": payload.email}
+
+@api_router.get("/admin/verify")
+async def admin_verify(admin=Depends(require_admin)):
+    return {"ok": True, "email": admin["email"]}
+
+@api_router.post("/admin/upload")
+async def admin_upload(file: UploadFile = File(...), admin=Depends(require_admin)):
+    allowed = {"image/jpeg", "image/jpg", "image/png", "image/webp"}
+    if file.content_type not in allowed:
+        raise HTTPException(status_code=400, detail="Formato inválido. Use JPG, PNG ou WebP.")
+    ext = {"image/jpeg": ".jpg", "image/jpg": ".jpg", "image/png": ".png", "image/webp": ".webp"}[file.content_type]
+    fname = f"{uuid.uuid4().hex}{ext}"
+    dest = UPLOAD_DIR / fname
+    with dest.open("wb") as out:
+        shutil.copyfileobj(file.file, out)
+    return {"url": f"/static/uploads/{fname}", "filename": fname}
+
+async def _send_order_status_email(order: Dict[str, Any]):
+    if not (resend and RESEND_API_KEY):
+        return False
+    try:
+        cust = order.get("customer", {})
+        to_email = cust.get("email")
+        if not to_email:
+            return False
+        tr = order.get("tracking_code") or ""
+        html = f"""<div style='font-family:Georgia,serif;background:#F9F8F6;padding:32px;color:#2C2825;'>
+<div style='max-width:560px;margin:0 auto;background:#fff;padding:40px;border-radius:12px;'>
+<h1 style='font-size:24px;font-weight:400;'>Atualização do seu pedido</h1>
+<p>Olá {cust.get('nome','')},</p>
+<p>Seu pedido <b>{order.get('order_number')}</b> agora está: <b>{order.get('status')}</b></p>
+{f"<p>Código de rastreio: <b>{tr}</b></p>" if tr else ""}
+<p style='color:#8A7D72;font-size:13px;'>Auré Casa</p></div></div>"""
+        await asyncio.to_thread(resend.Emails.send, {
+            "from": EMAIL_FROM, "to": [to_email],
+            "subject": f"[Auré Casa] Pedido {order.get('order_number')} · {order.get('status')}",
+            "html": html,
+        })
+        return True
+    except Exception as e:
+        logger.warning(f"Order status email failed: {e}")
+        return False
+
+
 @api_router.get("/orders")
 async def list_orders():
     return await db.orders.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
@@ -399,7 +482,7 @@ async def get_order(order_id: str):
     return o
 
 @api_router.patch("/orders/{order_id}")
-async def update_order(order_id: str, patch: Dict[str, Any]):
+async def update_order(order_id: str, patch: Dict[str, Any], admin=Depends(require_admin)):
     allowed = {"status", "tracking_code"}
     update = {k: v for k, v in patch.items() if k in allowed}
     if not update:
@@ -407,7 +490,14 @@ async def update_order(order_id: str, patch: Dict[str, Any]):
     r = await db.orders.update_one({"id": order_id}, {"$set": update})
     if r.matched_count == 0:
         raise HTTPException(status_code=404, detail="Pedido não encontrado")
-    return await db.orders.find_one({"id": order_id}, {"_id": 0})
+    updated = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if "status" in update:
+        await _send_order_status_email(updated)
+    return updated
+
+@api_router.get("/admin/orders")
+async def admin_list_orders(admin=Depends(require_admin)):
+    return await db.orders.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
 
 # ============ COUPONS ============
 @api_router.post("/coupons/validate")
@@ -537,7 +627,7 @@ async def contact_form(payload: ContactMessage):
 
 # ============ ADMIN STATS ============
 @api_router.get("/admin/stats")
-async def admin_stats():
+async def admin_stats(admin=Depends(require_admin)):
     total_orders = await db.orders.count_documents({})
     total_products = await db.products.count_documents({})
     newsletter_count = await db.newsletter.count_documents({})
@@ -560,11 +650,11 @@ async def admin_stats():
     }
 
 @api_router.get("/admin/products")
-async def admin_list_products():
+async def admin_list_products(admin=Depends(require_admin)):
     return await db.products.find({}, {"_id": 0}).to_list(500)
 
 @api_router.patch("/admin/products/{product_id}")
-async def admin_update_product(product_id: str, patch: Dict[str, Any]):
+async def admin_update_product(product_id: str, patch: Dict[str, Any], admin=Depends(require_admin)):
     patch.pop("_id", None)
     r = await db.products.update_one({"id": product_id}, {"$set": patch})
     if r.matched_count == 0:
@@ -572,7 +662,7 @@ async def admin_update_product(product_id: str, patch: Dict[str, Any]):
     return await db.products.find_one({"id": product_id}, {"_id": 0})
 
 @api_router.post("/admin/products")
-async def admin_create_product(product: Product):
+async def admin_create_product(product: Product, admin=Depends(require_admin)):
     doc = product.model_dump()
     if await db.products.find_one({"id": doc["id"]}):
         raise HTTPException(status_code=400, detail="ID duplicado")
@@ -580,19 +670,44 @@ async def admin_create_product(product: Product):
     return {k: v for k, v in doc.items() if k != "_id"}
 
 @api_router.delete("/admin/products/{product_id}")
-async def admin_delete_product(product_id: str):
+async def admin_delete_product(product_id: str, admin=Depends(require_admin)):
     r = await db.products.delete_one({"id": product_id})
     if r.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Produto não encontrado")
     return {"status": "ok"}
 
 @api_router.get("/admin/newsletter")
-async def admin_list_newsletter():
+async def admin_list_newsletter(admin=Depends(require_admin)):
     return await db.newsletter.find({}, {"_id": 0}).sort("created_at", -1).to_list(1000)
 
 @api_router.get("/admin/contacts")
-async def admin_list_contacts():
+async def admin_list_contacts(admin=Depends(require_admin)):
     return await db.contacts.find({}, {"_id": 0}).sort("created_at", -1).to_list(1000)
+
+@api_router.get("/")
+async def root():
+    return {"brand": "Auré Casa", "status": "ok"}
+
+app.include_router(api_router)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_credentials=True,
+    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+@app.on_event("startup")
+async def on_startup():
+    await seed_database()
+
+@app.on_event("shutdown")
+async def shutdown_db_client():
+    client.close()
 
 @api_router.get("/")
 async def root():
